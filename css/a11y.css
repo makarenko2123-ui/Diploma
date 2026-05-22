@@ -198,3 +198,36 @@ body.dialog-open{
     transform: none;
   }
 }
+
+@media (max-width:700px){
+  .a11y-fab{
+    position:static;
+    right:auto;
+    bottom:auto;
+    width:44px;
+    height:44px;
+    min-height:44px;
+    border-radius:999px;
+    box-shadow:none;
+    font-size:20px;
+    margin-left:0;
+  }
+
+  .fab-tooltip{
+    display:none;
+  }
+
+  .a11y-panel{
+    width:100%;
+    border-left:none;
+  }
+
+  .panel-actions{
+    flex-direction:column;
+  }
+
+  .panel-actions > *{
+    width:100%;
+    justify-content:center;
+  }
+}
