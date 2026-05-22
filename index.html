@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>NewsPortal - Актуальні новини</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/base.css"/>
+  <link rel="stylesheet" href="css/layout.css"/>
+  <link rel="stylesheet" href="css/components.css"/>
+  <link rel="stylesheet" href="css/a11y.css"/>
+  <link rel="stylesheet" href="css/themes.css"/>
+  <link rel="stylesheet" href="css/ai.css"/>
+
+  <meta
+    name="description"
+    content="Демонстраційний новинний портал з інтелектуальною адаптацією: автоматичне збільшення шрифтів, кнопок, контрасту та панель ручних налаштувань доступності."
+  >
+</head>
+
+<body class="theme-default measure-all" data-ai-mode="auto">
+  <a class="skip-link" href="#main">Перейти до контенту</a>
+
+  <header class="site-header" data-ai-region="nav">
+    <div class="container header-inner">
+      <a href="./" class="logo" aria-label="На головну сторінку">NewsPortal</a>
+
+      <button
+        id="menu-toggle"
+        class="burger ui-control"
+        type="button"
+        aria-label="Меню"
+        aria-controls="mobile-menu"
+        aria-expanded="false"
+        title="Меню"
+        data-ai-click-target
+      >
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="main-nav" aria-label="Розділи сайту" id="nav-filters">
+        <button type="button" data-filter="all" class="nav-pill active ui-control" data-ai-click-target>Всі</button>
+        <button type="button" data-filter="politics" class="nav-pill ui-control" data-ai-click-target>Політика</button>
+        <button type="button" data-filter="tech" class="nav-pill ui-control" data-ai-click-target>Технології</button>
+        <button type="button" data-filter="sport" class="nav-pill ui-control" data-ai-click-target>Спорт</button>
+        <button type="button" data-filter="world" class="nav-pill ui-control" data-ai-click-target>Світ</button>
+        <button type="button" data-filter="culture" class="nav-pill ui-control" data-ai-click-target>Культура</button>
+      </nav>
+
+      <button
+        id="a11y-toggle"
+        class="a11y-fab ui-control"
+        type="button"
+        aria-haspopup="dialog"
+        aria-controls="a11y-panel"
+        aria-expanded="false"
+        aria-describedby="a11y-tip"
+        data-ai-click-target
+      >
+        <span aria-hidden="true">♿</span>
+        <span class="fab-tooltip" role="tooltip" id="a11y-tip">
+          Налаштування доступності
+        </span>
+      </button>
+    </div>
+
+    <nav id="mobile-menu" class="mobile-menu" hidden aria-label="Розділи (мобільне меню)">
+      <button type="button" data-filter="all" class="nav-pill active ui-control" data-ai-click-target>Всі</button>
+      <button type="button" data-filter="politics" class="nav-pill ui-control" data-ai-click-target>Політика</button>
+      <button type="button" data-filter="tech" class="nav-pill ui-control" data-ai-click-target>Технології</button>
+      <button type="button" data-filter="sport" class="nav-pill ui-control" data-ai-click-target>Спорт</button>
+      <button type="button" data-filter="world" class="nav-pill ui-control" data-ai-click-target>Світ</button>
+      <button type="button" data-filter="culture" class="nav-pill ui-control" data-ai-click-target>Культура</button>
+    </nav>
+  </header>
+
+  <section class="ticker" aria-label="Стрічка заголовків">
+    <div class="ticker-viewport">
+      <div id="ticker-track" class="ticker-track" role="list"></div>
+    </div>
+  </section>
+
+  <main id="main" tabindex="-1" data-ai-region="content">
+    <section class="hero container" id="hero">
+      <article class="hero-card glass" id="hero-article">
+        <div class="hero-media">
+          <img
+            src="https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1600&auto=format&fit=crop"
+            alt="Міський квартал на світанку - заголовна новина"
+          >
+        </div>
+
+        <div class="hero-body">
+          <h1 class="measure">
+            Як змінюється цифрова безпека і робота в Україні: головні теми дня без інформаційного шуму
+          </h1>
+
+          <p class="measure hero-summary">
+            Від фішингу в месенджерах і приватності смартфонів до держзакупівель, бюджету громад та інструментів для малого бізнесу.
+            На сторінці зібрані не просто заголовки, а матеріали з поясненнями, що це означає на практиці.
+          </p>
+
+          <p class="meta measure">
+            <time datetime="2026-04-08">8 квітня 2026</time> • Редакція
+          </p>
+
+          <div class="hero-actions">
+            <button
+              id="hero-tts"
+              class="btn-ghost ui-control"
+              type="button"
+              aria-label="Прослухати головну новину"
+              title="Озвучити новину"
+              data-ai-click-target
+            >
+              🔊 Прослухати
+            </button>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="news-section container">
+      <h2 class="section-title">Останні новини</h2>
+
+      <section class="news-focus glass" aria-labelledby="news-focus-title">
+        <h3 class="news-focus-title" id="news-focus-title">Що тут справді корисно:</h3>
+        <div class="news-focus-actions">
+          <button class="btn-outline ui-control" type="button" data-focus="security">Шахрайство онлайн</button>
+          <button class="btn-outline ui-control" type="button" data-focus="work">Для роботи й бізнесу</button>
+          <button class="btn-outline ui-control" type="button" data-focus="explain">Коротко пояснюємо складне</button>
+        </div>
+      </section>
+
+      <div class="news-tools glass">
+        <label class="search" for="news-search">
+          <span class="sr-only">Пошук новин</span>
+          <input
+            id="news-search"
+            class="ui-control"
+            type="search"
+            placeholder="Пошук: тема, тег, категорія..."
+            aria-label="Пошук новин"
+          >
+        </label>
+
+        <div class="trending" aria-label="Популярні теми">
+          <button class="nav-pill ui-control" type="button" data-trend="фішинг">#фішинг</button>
+          <button class="nav-pill ui-control" type="button" data-trend="кібербезпека">#кібербезпека</button>
+          <button class="nav-pill ui-control" type="button" data-trend="економіка">#економіка</button>
+          <button class="nav-pill ui-control" type="button" data-trend="держзакупівлі">#держзакупівлі</button>
+        </div>
+
+        <div class="quick-actions">
+          <button class="btn-outline ui-control" type="button" data-qa="readable">Зробити читабельніше</button>
+          <button class="btn-outline ui-control" type="button" data-qa="contrast">Підсилити контраст</button>
+          <button class="btn-outline ui-control" type="button" data-qa="tts">Прослухати першу новину</button>
+        </div>
+
+        <button id="clear-filters" class="clear-filters-btn" type="button" hidden aria-label="Скинути всі фільтри">
+          ✕ Скинути фільтри
+        </button>
+      </div>
+
+      <section
+        class="news-list"
+        id="cards"
+        role="list"
+        aria-label="Стрічка новин"
+        data-ai-region="cards"
+      ></section>
+    </section>
+
+    <form class="glass subscribe-panel" id="subscribe-form" novalidate>
+      <label class="field" for="email">
+        <span>Email</span>
+        <input
+          id="email"
+          name="email"
+          class="ui-control"
+          type="email"
+          required
+          autocomplete="email"
+          placeholder="name@example.com"
+          aria-describedby="email-hint email-error"
+        >
+        <span id="email-hint" class="hint">Введіть коректну електронну пошту</span>
+        <span id="email-error" class="hint a11y-field-error" role="alert"></span>
+      </label>
+
+      <label class="field" for="password">
+        <span>Пароль</span>
+        <input
+          id="password"
+          name="password"
+          class="ui-control"
+          type="password"
+          required
+          minlength="6"
+          autocomplete="current-password"
+          placeholder="мін. 6 символів"
+          aria-describedby="password-hint password-error"
+        >
+        <span id="password-hint" class="hint">Мінімум 6 символів</span>
+        <span id="password-error" class="hint a11y-field-error" role="alert"></span>
+      </label>
+
+      <button class="btn-primary ui-control" type="submit">Підписатися</button>
+      <div id="form-message" class="hint" role="status" aria-live="polite"></div>
+    </form>
+  </main>
+
+  <aside
+    id="a11y-panel"
+    class="a11y-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="a11y-title"
+    hidden
+  >
+    <div class="panel-head">
+      <h2 id="a11y-title" tabindex="-1">Налаштування доступності</h2>
+      <button id="a11y-close" class="icon-btn ui-control" type="button" aria-label="Закрити" data-ai-click-target>✕</button>
+    </div>
+
+    <div class="panel-body">
+      <fieldset class="field">
+        <legend>Швидкі пресети</legend>
+        <button type="button" class="btn-outline ui-control" data-preset="reading">Легке читання</button>
+        <button type="button" class="btn-outline ui-control" data-preset="vision">Слабкий зір</button>
+        <button type="button" class="btn-outline ui-control" data-preset="keyboard">Клавіатура</button>
+        <button type="button" class="btn-outline ui-control" data-preset="focus">Концентрація</button>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Шрифт</legend>
+        <label><input type="radio" name="fontfam" value="system"> Системний</label>
+        <label><input type="radio" name="fontfam" value="hyperlegible" checked> Atkinson Hyperlegible</label>
+      </fieldset>
+
+      <label class="field">
+        <span>Рівень збільшення (0-4)</span>
+        <input id="a11y-level" type="range" min="0" max="4" step="1" value="0" aria-valuetext="Рівень 0 з 4">
+      </label>
+      <p class="hint">Рівень збільшує текст, кнопки, відступи, фокус і читабельність.</p>
+
+      <label class="field">
+        <span>Інтервал між літерами</span>
+        <input id="letterspace" type="range" min="0" max="0.12" step="0.01" value="0" aria-valuetext="Стандартний інтервал між літерами">
+      </label>
+
+      <fieldset class="field">
+        <legend>Тема</legend>
+        <label><input type="radio" name="theme" value="default" checked> Світла (glass)</label>
+        <label><input type="radio" name="theme" value="dark"> Темна</label>
+        <label><input type="radio" name="theme" value="high-contrast"> Високий контраст</label>
+        <label><input type="radio" name="theme" value="sepia"> Тепла</label>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Посилання та фокус</legend>
+        <label class="checkbox"><input id="underline-links" type="checkbox"> Підкреслювати всі посилання</label>
+        <label class="checkbox"><input id="thick-focus" type="checkbox"> Товстий фокус</label>
+        <label class="checkbox"><input id="measure-global" type="checkbox" checked> Обмежувати довжину рядка на всьому сайті</label>
+        <label class="checkbox"><input id="focus-always" type="checkbox"> Показувати фокус і при кліку</label>
+        <label class="checkbox"><input id="reduce-motion" type="checkbox"> Зменшити анімації</label>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Інтелектуальна адаптація</legend>
+        <label class="field" for="ai-mode">
+          <span>Режим AI-адаптації</span>
+          <select id="ai-mode" name="ai-mode">
+            <option value="auto">Автоматично (рекомендовано)</option>
+            <option value="gentle">М'який</option>
+            <option value="off">Вимкнено</option>
+          </select>
+        </label>
+        <p class="hint">
+          Система аналізує промахи по кнопках та zoom сторінки й автоматично
+          збільшує шрифт, кнопки та контраст.
+        </p>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Міні аудит доступності</legend>
+        <button id="a11y-audit" class="btn-outline ui-control" type="button" data-ai-click-target>
+          Перевірити сторінку
+        </button>
+        <div id="a11y-audit-results" class="a11y-audit" hidden></div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Озвучка (TTS)</legend>
+
+        <p class="hint">
+          Озвучка працює лише при натисканні.
+          Автоматична озвучка повністю вимкнена.
+        </p>
+
+        <label class="field" for="tts-voice">
+          <span>Голос</span>
+          <select id="tts-voice"></select>
+        </label>
+
+        <label class="field" for="tts-rate">
+          <span>Швидкість</span>
+          <input id="tts-rate" type="range" min="0.7" max="1.4" step="0.05" value="1" aria-valuetext="Швидкість 1">
+        </label>
+
+        <button id="tts-sample" class="btn-outline ui-control" type="button" data-ai-click-target>
+          ▶ Слухати приклад
+        </button>
+      </fieldset>
+    </div>
+
+    <div class="panel-actions">
+      <button id="a11y-reset" class="btn-outline ui-control" type="button" data-ai-click-target>Скинути</button>
+      <button id="a11y-close2" class="btn-primary ui-control" type="button" data-ai-click-target>Закрити</button>
+    </div>
+  </aside>
+
+  <div id="backdrop" class="backdrop" hidden aria-hidden="true"></div>
+
+  <section
+    id="news-dialog"
+    class="news-dialog glass"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="news-dialog-title"
+    hidden
+  >
+    <div class="news-dialog-head">
+      <div class="news-dialog-meta" id="news-dialog-meta"></div>
+      <button id="news-dialog-close" class="icon-btn ui-control" type="button" aria-label="Закрити новину">✕</button>
+    </div>
+    <div class="news-dialog-body">
+      <img id="news-dialog-image" class="news-dialog-image" alt="">
+      <h2 id="news-dialog-title" class="measure"></h2>
+      <p id="news-dialog-excerpt" class="hero-summary measure"></p>
+      <div id="news-dialog-tags" class="trending news-dialog-tags" aria-label="Теги новини"></div>
+    </div>
+  </section>
+
+  <button
+    id="back-to-top"
+    class="back-to-top ui-control"
+    hidden
+    type="button"
+    aria-label="Повернутись нагору"
+    title="Вгору"
+    data-ai-click-target
+  >▲</button>
+
+  <div id="a11y-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="ai-indicator" class="ai-indicator" hidden aria-live="polite" aria-atomic="true">
+    <span class="ai-icon" aria-hidden="true">✨</span>
+    <span class="ai-text">AI адаптував інтерфейс</span>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

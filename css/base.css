@@ -1,0 +1,209 @@
+:root{
+  /* База (панель може змінювати) */
+  --font-size-base: 100%;
+  --line-base: 1.6;
+  --measure-base: 68ch;
+  --letter-space-base: 0em;
+  --focus-offset: 4px;
+
+  --ui-scale: 1;
+  --focus-w: 3px;
+  --radius-card: 20px;
+  --gap: 18px;
+  --glow-strong: color-mix(in oklab, var(--accent) 38%, transparent);
+  --glow-soft:   color-mix(in oklab, var(--accent) 18%, transparent);
+
+
+  /* Похідні */
+  --font-size: var(--font-size-base);
+  --line: var(--line-base);
+  --measure: var(--measure-base);
+  --letter-space: var(--letter-space-base);
+
+  /* Default (glass) colors — перекриваються themes.css */
+  --bg:#030712;
+  --bg-elevated:rgba(15,23,42,0.88);
+  --fg:#e5efff;
+  --muted:#94a3b8;
+  --accent:#38bdf8;
+  --accent-soft:rgba(56,189,248,0.18);
+  --accent-ui:#38bdf8;
+  --accent-focus:#facc15;
+  --border:rgba(148,163,184,0.55);
+  --chip-bg:rgba(15,23,42,0.78);
+  --surface: rgba(15,23,42,0.82);
+
+  --fab-bg:#0ea5e9;
+  --fab-fg:#0b1120;
+  --fab-shadow:0 18px 45px rgba(56,189,248,0.45);
+
+  --font-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-hyper: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font: var(--font-hyper);
+
+  --control-radius:999px;
+  --control-pad-x-base:14px;
+  --control-pad-y-base:8px;
+  --control-pad-x:var(--control-pad-x-base);
+  --control-pad-y:var(--control-pad-y-base);
+  --control-min-h:44px;
+}
+
+html{
+  scroll-behavior:smooth;
+  font-size: var(--font-size);
+  transition: font-size 0.4s ease;
+  overflow-x: clip;
+}
+
+body{
+  margin:0;
+  min-height:100dvh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  line-height: var(--line);
+  letter-spacing: var(--letter-space);
+  overflow-x: clip;
+}
+
+img{max-width:100%;display:block;}
+a{color:inherit;}
+.container{
+  max-width:1120px;
+  margin:0 auto;
+  padding: 0 calc(20px + env(safe-area-inset-right)) 0 calc(20px + env(safe-area-inset-left));
+  box-sizing: border-box;
+}
+
+.sr-only{
+  position:absolute;width:1px;height:1px;overflow:hidden;
+  clip:rect(1px,1px,1px,1px);
+}
+
+.measure{max-width:var(--measure);}
+.measure-all :where(p,li,blockquote,h1,h2,h3){ max-width:var(--measure); }
+
+/* Focus */
+:where(a,button,input,select,textarea,[role="button"]):focus-visible{
+  outline: var(--focus-w) solid var(--accent-focus);
+  outline-offset: var(--focus-offset);
+}
+
+:where(a,button,[role="button"]):focus-visible{
+  border-radius: 999px;
+}
+
+.focus-thick :where(a,button,input,select,textarea,[role="button"]):focus-visible{
+  outline-width: calc(var(--focus-w) + 1px);
+  outline-offset: var(--focus-offset);
+}
+
+.focus-always :where(a,button,input,select,textarea,[role="button"]):focus{
+  outline:3px solid var(--accent-focus);
+  outline-offset: var(--focus-offset);
+  border-radius:999px;
+}
+
+.underline-links a{
+  text-decoration:underline !important;
+  text-underline-offset:3px;
+}
+
+/* Skip link */
+.skip-link{
+  position:absolute;left:-9999px;top:-9999px;
+  background:#000;color:#fff;padding:8px 14px;border-radius:999px;
+  z-index:999;
+}
+.skip-link:focus{ left:16px;top:16px; }
+
+/* Reduce motion (manual class) */
+body.reduce-motion *,
+body.reduce-motion{
+  animation:none !important;
+  transition:none !important;
+  scroll-behavior:auto !important;
+}
+
+/* Reduce motion (system preference) */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation: none !important;
+    transition: none !important;
+  }
+  html { scroll-behavior:auto !important; }
+}
+
+/* AI / A11Y: hover highlight mode */
+body.a11y-hover-glow :where(
+  a, button, input, select, textarea,
+  .nav-pill, .ui-control, [role="button"]
+):hover{
+  box-shadow: 0 0 0 3px var(--glow-strong);
+}
+
+/* AI / A11Y: extra strong hover for touchpads/misclick */
+body.a11y-hover-glow :where(a,button,.nav-pill,.ui-control):hover{
+  outline: 2px solid var(--glow-strong);
+  outline-offset: 3px;
+}
+
+/* AI: emphasize interactive elements */
+body.a11y-emphasize-click :where(a,button,.nav-pill,.ui-control,[role="button"]){
+  box-shadow: 0 0 0 2px var(--glow-soft);
+}
+
+/* =========================
+   A11y Levels (0..4)
+   Єдине джерело правди для масштабу
+   ========================= */
+html.a11y-l0{
+  --font-size-base: 100%;
+  --ui-scale: 1;
+  --gap: 18px;
+  --focus-w: 3px;
+  --line-base: 1.6;
+  --measure-base: 68ch;
+}
+
+html.a11y-l1{
+  --font-size-base: 107%;
+  --ui-scale: 1.08;
+  --gap: 19px;
+  --focus-w: 3.5px;
+  --line-base: 1.68;
+  --measure-base: 70ch;
+}
+
+html.a11y-l2{
+  --font-size-base: 114%;
+  --ui-scale: 1.16;
+  --gap: 20px;
+  --focus-w: 4px;
+  --line-base: 1.76;
+  --measure-base: 72ch;
+}
+
+html.a11y-l3{
+  --font-size-base: 122%;
+  --ui-scale: 1.26;
+  --gap: 22px;
+  --focus-w: 4.6px;
+  --line-base: 1.84;
+  --measure-base: 74ch;
+}
+
+html.a11y-l4{
+  --font-size-base: 132%;
+  --ui-scale: 1.40;
+  --gap: 24px;
+  --focus-w: 5.2px;
+  --line-base: 1.95;
+  --measure-base: 76ch;
+}
+
+::selection{
+  background: var(--selection-bg, rgba(56,189,248,0.28));
+  color: var(--selection-fg, inherit);
+}

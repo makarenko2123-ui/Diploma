@@ -1,0 +1,66 @@
+/* css/themes.css — theme presets for body.theme-* */
+
+body.theme-default{
+  color-scheme: light dark;
+}
+
+body.theme-dark{
+  color-scheme: dark;
+  --bg:#030712;
+  --bg-elevated:rgba(2,6,23,0.92);
+  --surface: rgba(2,6,23,0.88);
+  --fg:#e5e7eb;
+  --muted:#94a3b8;
+  --border:rgba(148,163,184,0.35);
+  --accent:#38bdf8;
+  --accent-soft:rgba(56,189,248,0.16);
+  --accent-focus:#38bdf8;
+  --selection-bg: color-mix(in oklab, var(--accent) 28%, transparent);
+  --selection-fg: var(--fg);
+
+  --fab-bg:#38bdf8;
+  --fab-fg:#0b1120;
+  --fab-shadow:0 18px 45px rgba(56,189,248,0.35);
+}
+
+body.theme-high-contrast{
+  color-scheme: dark;
+  --bg:#000;
+  --bg-elevated:#000;
+  --surface:#000;
+  --fg:#fff;
+  --muted:rgba(255,255,255,0.9);
+  --border:rgba(255,255,255,0.7);
+
+  --accent:#fff;
+  --accent-soft:rgba(255,255,255,0.08);
+  --accent-ui:#fff;
+  --accent-focus:#fff;
+  --selection-bg: #fff;
+  --selection-fg: #000;
+
+  --fab-bg:#fff;
+  --fab-fg:#000;
+  --fab-shadow:0 18px 45px rgba(255,255,255,0.18);
+}
+
+body.theme-sepia{
+  color-scheme: light;
+  --bg:#fbf3e4;
+  --bg-elevated:rgba(255,248,236,0.92);
+  --surface:rgba(255,248,236,0.92);
+  --fg:#1f2937;
+  --muted:rgba(31,41,55,0.68);
+  --border:rgba(31,41,55,0.22);
+
+  --accent:#b45309;
+  --accent-soft:rgba(180,83,9,0.10);
+  --accent-ui:#b45309;
+  --accent-focus:#b45309;
+  --selection-bg: color-mix(in oklab, var(--accent) 28%, transparent);
+  --selection-fg: var(--fg);
+
+  --fab-bg:rgba(180,83,9,0.22);
+  --fab-fg:#1f2937;
+  --fab-shadow:0 18px 45px rgba(180,83,9,0.20);
+}

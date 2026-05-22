@@ -1,0 +1,120 @@
+/* css/ai.css */
+
+.ai-indicator{
+  position: fixed;
+  bottom: 94px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  backdrop-filter: blur(12px);
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  z-index: 9999;
+}
+.ai-indicator[hidden]{ display:none; }
+
+.ai-indicator.show{
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ai-icon{
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(56,189,248,0.18);
+  border: 1px solid rgba(56,189,248,0.35);
+}
+.ai-text{ display:inline-flex; }
+
+@media (max-width: 700px){
+  .ai-indicator{
+    left: 16px;
+    right: 16px;
+    bottom: 88px;
+  }
+}
+
+.a11y-field-error{
+  margin-top: 6px;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: #b00020;
+}
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"]{
+  outline: 3px solid color-mix(in oklab, #b00020 65%, transparent);
+  outline-offset: 2px;
+}
+
+/* Reading ruler */
+body.a11y-reading-ruler #main :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
+body.a11y-reading-ruler #main :is(p, li, blockquote):focus-within{
+  background: color-mix(in oklab, currentColor 8%, transparent);
+  border-radius: 10px;
+}
+
+body.a11y-declutter .ticker{ display:none !important; }
+
+body.a11y-declutter .hero-media{
+  opacity: 0.25;
+  filter: grayscale(0.2) blur(1px);
+}
+
+.a11y-audit{
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, #000 6%, transparent);
+  border: 1px solid color-mix(in oklab, currentColor 16%, transparent);
+}
+
+.a11y-audit h3{
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.a11y-audit ul{
+  margin: 0;
+  padding-left: 18px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.a11y-audit .audit-item{
+  margin: 6px 0;
+}
+
+.a11y-audit .audit-actions{
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.a11y-outline-issue{
+  outline: 3px solid #ffb020 !important;
+  outline-offset: 3px;
+  border-radius: 8px;
+  scroll-margin-top: 90px;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .ai-indicator{
+    transition: none;
+    transform: none;
+  }
+}
