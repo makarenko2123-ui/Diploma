@@ -56,10 +56,9 @@ export function initTTS(){
 
   let voices = [];
   let currentText = '';
-  let activeScrollHandler = null;
-  let activeScrollTimeout = 0;
+  let activeInterruptors = [];
   const isSpeakingNow = () =>
-    supported && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+    supported && (window.speechSynthesis.speaking || window.speechSynthesis.pending || window.speechSynthesis.paused);
 
   if (rateRange) rateRange.value = String(readSavedRate());
 
@@ -88,20 +87,55 @@ export function initTTS(){
   }
 
   function clearSpeechSideEffects(){
-    if (activeScrollHandler){
-      window.removeEventListener('scroll', activeScrollHandler);
-      activeScrollHandler = null;
+    for (const { target, type, handler } of activeInterruptors){
+      target.removeEventListener(type, handler);
     }
-
-    clearTimeout(activeScrollTimeout);
-    activeScrollTimeout = 0;
+    activeInterruptors = [];
   }
 
   function stop(){
     if (!supported) return false;
     clearSpeechSideEffects();
+    currentText = '';
     window.speechSynthesis.cancel();
     return true;
+  }
+
+  function bindInterruptors(){
+    clearSpeechSideEffects();
+
+    const interrupt = () => {
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending || window.speechSynthesis.paused){
+        stop();
+      }
+    };
+
+    const keyboardScrollKeys = new Set([
+      'ArrowUp',
+      'ArrowDown',
+      'PageUp',
+      'PageDown',
+      'Home',
+      'End',
+      ' ',
+      'Spacebar'
+    ]);
+
+    const handleKeydown = (e) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (keyboardScrollKeys.has(e.key)) interrupt();
+    };
+
+    activeInterruptors = [
+      { target: window, type: 'scroll', handler: interrupt, options: { passive: true } },
+      { target: window, type: 'wheel', handler: interrupt, options: { passive: true } },
+      { target: window, type: 'touchmove', handler: interrupt, options: { passive: true } },
+      { target: window, type: 'keydown', handler: handleKeydown }
+    ];
+
+    for (const { target, type, handler, options } of activeInterruptors){
+      target.addEventListener(type, handler, options);
+    }
   }
 
   function speak(text){
@@ -109,9 +143,6 @@ export function initTTS(){
     if (!supported || !normalizedText) return false;
 
     ensureVoicesLoaded();
-    if (window.speechSynthesis.paused) {
-      try{ window.speechSynthesis.resume(); }catch{}
-    }
     stop();
     currentText = normalizedText;
 
@@ -124,26 +155,15 @@ export function initTTS(){
     const v = pickVoice(voices, selected);
     if (v) u.voice = v;
     u.lang = v?.lang || 'uk-UA';
-
-    activeScrollHandler = () => {
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.pause();
-        clearTimeout(activeScrollTimeout);
-        activeScrollTimeout = window.setTimeout(() => {
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-        }, 1500);
-      }
-    };
-
-    window.addEventListener('scroll', activeScrollHandler, { passive: true });
+    bindInterruptors();
 
     u.onend = () => {
       clearSpeechSideEffects();
+      currentText = '';
     };
     u.onerror = () => {
       clearSpeechSideEffects();
+      currentText = '';
     };
 
     window.setTimeout(() => {
