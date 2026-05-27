@@ -6,6 +6,7 @@
            calc(var(--control-pad-x) * var(--ui-scale));
   min-height: calc(var(--control-min-h) * var(--ui-scale));
   font-size: calc(0.92rem * var(--ui-scale));
+  touch-action: manipulation;
 }
 
 /* Pills */
@@ -24,6 +25,7 @@
   white-space:normal;
   text-align:center;
   cursor:pointer;
+  touch-action: manipulation;
   transition:
     background-color .16s ease,
     border-color .16s ease,
@@ -58,6 +60,7 @@
   background:rgba(15,23,42,0.6);
   padding:0;
   cursor:pointer;
+  touch-action: manipulation;
 }
 .burger span{
   position:absolute;left:8px;right:8px;
@@ -107,6 +110,7 @@
   white-space: normal;
   max-width: 100%;
   text-align: center;
+  touch-action: manipulation;
 }
 
 .btn-primary,
@@ -330,10 +334,10 @@
   display: inline-flex;
   gap: 18px;
   padding: 12px 20px;
+  width: max-content;
   white-space: nowrap;
   will-change: transform;
   transform: translate3d(0,0,0);
-  animation: ticker-move 100s linear infinite;
 }
 
 .ticker-item{
@@ -421,14 +425,8 @@ body[data-zoom-assist="4"] .card-body{
   gap: 8px;
 }
 
-@keyframes ticker-move{
-  from{ transform: translateX(0); }
-  to{ transform: translateX(-50%); }
-}
-
 @media (prefers-reduced-motion: reduce){
   .ticker-track{
-    animation: none;
     transform: none;
   }
 

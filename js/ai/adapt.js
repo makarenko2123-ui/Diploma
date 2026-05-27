@@ -31,7 +31,6 @@ export function initAIAdapt({ a11y } = {}){
 
   const SUBSCRIBE_FORM_ID = 'subscribe-form';
 
-  let lastClickAt = 0;
   let lastContrastToastAt = 0;
   let lastZoomLevel = 0;
   let lastSelToastAt = 0;
@@ -329,12 +328,6 @@ export function initAIAdapt({ a11y } = {}){
 
     const btn = e.target.closest('button, [role="button"], .ui-control');
     if (btn){
-      const t = performance.now();
-      if (t - lastClickAt < 280){
-        e.preventDefault();
-        return;
-      }
-      lastClickAt = t;
       return;
     }
 
@@ -579,10 +572,15 @@ export function initAIAdapt({ a11y } = {}){
   const ticker = document.getElementById('ticker-track');
   const tickerWrap = document.querySelector('.ticker');
   const isTickerPausedByUser = () => ticker?.dataset?.userPaused === 'true';
-  const pauseTicker = () => { if (ticker) ticker.style.animationPlayState = 'paused'; };
+  const pauseTicker = () => {
+    if (!ticker) return;
+    ticker.dataset.aiPaused = 'true';
+    ticker.dispatchEvent(new CustomEvent('ticker:pause'));
+  };
   const playTicker = () => {
     if (!ticker || isTickerPausedByUser()) return;
-    ticker.style.animationPlayState = 'running';
+    ticker.dataset.aiPaused = 'false';
+    ticker.dispatchEvent(new CustomEvent('ticker:resume'));
   };
 
   if (ticker && tickerWrap){

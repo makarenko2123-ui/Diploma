@@ -20,6 +20,7 @@ ready(() => {
   initAIExtras({ notify: ai?.notify });
 
   const tickerTrack = document.getElementById('ticker-track');
+  const tickerSection = document.querySelector('.ticker');
   const search = document.getElementById('news-search');
   const clearFiltersBtn = document.getElementById('clear-filters');
   const form = document.getElementById('subscribe-form');
@@ -36,8 +37,21 @@ ready(() => {
   const newsDialogExcerpt = document.getElementById('news-dialog-excerpt');
   const newsDialogImage = document.getElementById('news-dialog-image');
   const newsDialogTags = document.getElementById('news-dialog-tags');
+  const tickerController = createTickerController(tickerTrack);
   let currentTrend = null;
   let lastDialogTrigger = null;
+
+  syncStickyOffsets();
+
+  if ('ResizeObserver' in window) {
+    const header = document.querySelector('.site-header');
+    if (header) {
+      const resizeObserver = new ResizeObserver(() => syncStickyOffsets());
+      resizeObserver.observe(header);
+    }
+  } else {
+    window.addEventListener('resize', syncStickyOffsets, { passive: true });
+  }
 
   function setScenarioActive(activeFocus = ''){
     document.querySelectorAll('[data-focus]').forEach((el) => {
@@ -67,17 +81,7 @@ ready(() => {
   }
 
   function ensureTickerRunning(restart = false){
-    if (!tickerTrack) return;
-
-    tickerTrack.dataset.userPaused = 'false';
-
-    if (restart){
-      tickerTrack.style.animation = 'none';
-      void tickerTrack.offsetWidth;
-      tickerTrack.style.animation = '';
-    }
-
-    tickerTrack.style.animationPlayState = 'running';
+    tickerController?.resume({ restart });
   }
 
   function updateClearFiltersVisibility(){
@@ -90,27 +94,12 @@ ready(() => {
   }
 
   function renderTicker(items){
-    if (!tickerTrack) return;
-
     const headlines = (Array.isArray(items) ? items : [])
       .slice(0, 10)
       .map((item) => item?.title)
       .filter(Boolean);
 
-    if (!headlines.length){
-      tickerTrack.innerHTML = '';
-      return;
-    }
-
-    const htmlOnce = headlines.map((title) => `
-      <div class="ticker-item" role="listitem">
-        <span class="ticker-dot" aria-hidden="true">•</span>
-        <span>${title}</span>
-      </div>
-    `).join('');
-
-    tickerTrack.innerHTML = htmlOnce + htmlOnce;
-    ensureTickerRunning(true);
+    tickerController?.setItems(headlines);
   }
 
   function clearFormErrors(){
@@ -422,4 +411,168 @@ ready(() => {
   });
 
   updateClearFiltersVisibility();
+
+  tickerSection?.addEventListener('mouseenter', () => tickerController?.pause('user'));
+  tickerSection?.addEventListener('mouseleave', () => tickerController?.resume());
+  tickerTrack?.addEventListener('ticker:pause', () => tickerController?.pause('ai'));
+  tickerTrack?.addEventListener('ticker:resume', () => tickerController?.resume());
 });
+
+function syncStickyOffsets(){
+  const header = document.querySelector('.site-header');
+  if (!header) return;
+
+  const height = Math.ceil(header.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--header-h', `${height}px`);
+}
+
+function createTickerController(track){
+  if (!track) return null;
+
+  const mediaQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  let frameId = 0;
+  let lastTs = 0;
+  let offset = 0;
+  let cycleWidth = 0;
+  let pausedByUser = false;
+  let pausedByAI = false;
+  const speedPxPerSec = 42;
+
+  function shouldReduceMotion(){
+    return document.body.classList.contains('reduce-motion') || !!mediaQuery?.matches;
+  }
+
+  function stop(){
+    if (frameId) cancelAnimationFrame(frameId);
+    frameId = 0;
+    lastTs = 0;
+  }
+
+  function applyTransform(){
+    track.style.transform = `translate3d(${offset}px, 0, 0)`;
+  }
+
+  function recalc(){
+    cycleWidth = track.scrollWidth / 2;
+    if (!Number.isFinite(cycleWidth) || cycleWidth <= 0){
+      offset = 0;
+      track.style.transform = 'translate3d(0, 0, 0)';
+      return false;
+    }
+
+    offset = cycleWidth ? -((-offset) % cycleWidth) : 0;
+    applyTransform();
+    return true;
+  }
+
+  function tick(ts){
+    if (shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+      stop();
+      return;
+    }
+
+    if (!lastTs) lastTs = ts;
+    const delta = Math.min(64, ts - lastTs);
+    lastTs = ts;
+
+    offset -= (speedPxPerSec * delta) / 1000;
+    if (cycleWidth > 0 && -offset >= cycleWidth){
+      offset += cycleWidth;
+    }
+
+    applyTransform();
+    frameId = requestAnimationFrame(tick);
+  }
+
+  function start(){
+    if (frameId || !recalc() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+      if (shouldReduceMotion()){
+        offset = 0;
+        track.style.transform = 'translate3d(0, 0, 0)';
+      }
+      return;
+    }
+
+    frameId = requestAnimationFrame(tick);
+  }
+
+  function setItems(items){
+    const headlines = Array.isArray(items) ? items.filter(Boolean) : [];
+
+    if (!headlines.length){
+      stop();
+      track.innerHTML = '';
+      track.style.transform = 'translate3d(0, 0, 0)';
+      cycleWidth = 0;
+      return;
+    }
+
+    const htmlOnce = headlines.map((title) => `
+      <div class="ticker-item" role="listitem">
+        <span class="ticker-dot" aria-hidden="true">•</span>
+        <span>${title}</span>
+      </div>
+    `).join('');
+
+    track.innerHTML = htmlOnce + htmlOnce;
+    offset = 0;
+    stop();
+    requestAnimationFrame(start);
+  }
+
+  function resume({ restart = false } = {}){
+    pausedByUser = false;
+    pausedByAI = false;
+    track.dataset.userPaused = 'false';
+    track.dataset.aiPaused = 'false';
+
+    if (restart){
+      offset = 0;
+      stop();
+    }
+
+    start();
+  }
+
+  function pause(source = 'user'){
+    if (source === 'ai') {
+      pausedByAI = true;
+      track.dataset.aiPaused = 'true';
+    } else {
+      pausedByUser = true;
+      track.dataset.userPaused = 'true';
+    }
+
+    stop();
+  }
+
+  const observer = new MutationObserver(() => {
+    if (shouldReduceMotion()){
+      stop();
+      offset = 0;
+      track.style.transform = 'translate3d(0, 0, 0)';
+      return;
+    }
+
+    start();
+  });
+
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+  window.addEventListener('resize', () => {
+    stop();
+    requestAnimationFrame(start);
+  }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else start();
+  });
+
+  mediaQuery?.addEventListener?.('change', () => {
+    stop();
+    requestAnimationFrame(start);
+  });
+
+  return { pause, resume, setItems };
+}

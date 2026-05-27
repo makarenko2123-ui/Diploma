@@ -106,6 +106,12 @@ export function initNav({ onFilter, initialFilter = 'all' } = {}){
         closeMobileMenu({ restoreFocus: true });
       }
     });
+
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 700 && !mobile.hidden){
+        closeMobileMenu({ restoreFocus: false });
+      }
+    }, { passive: true });
   }
 
   // Initial UI sync without forcing a filter reset.

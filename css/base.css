@@ -53,6 +53,7 @@ html{
   scroll-behavior:smooth;
   font-size: var(--font-size);
   transition: font-size 0.4s ease;
+  overflow-x: hidden;
   overflow-x: clip;
 }
 
@@ -64,6 +65,7 @@ body{
   font-family: var(--font);
   line-height: var(--line);
   letter-spacing: var(--letter-space);
+  overflow-x: hidden;
   overflow-x: clip;
 }
 
