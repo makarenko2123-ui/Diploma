@@ -117,6 +117,18 @@ function setRangeValueText(input, text){
   input.setAttribute('aria-valuetext', text);
 }
 
+function syncSharedOverlayState(backdrop){
+  const body = document.body;
+  if (!body) return;
+
+  const hasPanel = body.dataset.a11yPanelOpen === 'true';
+  const hasNewsDialog = body.dataset.newsDialogOpen === 'true';
+  const shouldLock = hasPanel || hasNewsDialog;
+
+  body.classList.toggle('dialog-open', shouldLock);
+  if (backdrop) backdrop.hidden = !shouldLock;
+}
+
 function trapFocus(panel){
   const sel = [
     'a[href]',
@@ -240,8 +252,8 @@ export function initA11yPanel({ tts } = {}){
     panel.hidden = false;
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
-    backdrop.hidden = false;
-    document.body.classList.add('dialog-open');
+    document.body.dataset.a11yPanelOpen = 'true';
+    syncSharedOverlayState(backdrop);
 
     fab?.setAttribute('aria-expanded', 'true');
     syncUI();
@@ -260,8 +272,8 @@ export function initA11yPanel({ tts } = {}){
   function close(){
     if (!panel || !backdrop) return;
     panel.hidden = true;
-    backdrop.hidden = true;
-    document.body.classList.remove('dialog-open');
+    document.body.dataset.a11yPanelOpen = 'false';
+    syncSharedOverlayState(backdrop);
 
     fab?.setAttribute('aria-expanded', 'false');
 
@@ -272,10 +284,17 @@ export function initA11yPanel({ tts } = {}){
   fab?.addEventListener('click', open);
   close1?.addEventListener('click', close);
   close2?.addEventListener('click', close);
-  backdrop?.addEventListener('click', close);
+  backdrop?.addEventListener('click', (e) => {
+    if (!panel || panel.hidden) return;
+    e.stopImmediatePropagation();
+    close();
+  });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && panel && !panel.hidden) close();
+    if (e.key === 'Escape' && panel && !panel.hidden){
+      e.stopImmediatePropagation();
+      close();
+    }
   });
 
   panel?.addEventListener('click', (e) => {

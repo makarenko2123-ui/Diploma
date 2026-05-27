@@ -27,6 +27,16 @@
   padding-block: 10px;
 }
 
+.header-inner > *,
+.main-nav > *,
+.hero-card > *,
+.hero-body > *,
+.news-tools > *,
+.news-focus > *,
+.subscribe-panel > *{
+  min-width:0;
+}
+
 .logo{
   font-weight:800;
   font-size:20px;
@@ -274,6 +284,11 @@ body[data-zoom-assist="4"] .container{
 body[data-zoom-assist="2"] .header-inner,
 body[data-zoom-assist="3"] .header-inner,
 body[data-zoom-assist="4"] .header-inner{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  align-items:center;
+  column-gap:10px;
+  row-gap:10px;
   justify-content: space-between;
 }
 
@@ -281,8 +296,19 @@ body[data-zoom-assist="2"] .main-nav,
 body[data-zoom-assist="3"] .main-nav,
 body[data-zoom-assist="4"] .main-nav{
   order: 3;
+  grid-column:1 / -1;
   flex-basis: 100%;
   justify-content: flex-start;
+}
+
+body[data-zoom-assist="2"] .logo,
+body[data-zoom-assist="3"] .logo,
+body[data-zoom-assist="4"] .logo{
+  min-width:0;
+  max-width:100%;
+  font-size:clamp(1rem, 3.2vw, 1.12rem);
+  letter-spacing:0.05em;
+  line-height:1.2;
 }
 
 body[data-zoom-assist="2"] .hero-card,
@@ -305,16 +331,38 @@ body[data-zoom-assist="4"] .quick-actions{
   grid-template-columns: 1fr;
 }
 
+body[data-zoom-assist="2"] .news-focus-actions,
+body[data-zoom-assist="2"] .quick-actions{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
 body[data-zoom-assist="3"] .trending,
 body[data-zoom-assist="4"] .trending{
   gap: 8px;
 }
 
+body[data-zoom-assist="2"] .trending .nav-pill,
+body[data-zoom-assist="3"] .trending .nav-pill,
+body[data-zoom-assist="4"] .trending .nav-pill{
+  justify-content:flex-start;
+  text-align:left;
+}
+
+body[data-zoom-assist="2"] .news-tools,
+body[data-zoom-assist="2"] .news-focus,
 body[data-zoom-assist="3"] .news-tools,
 body[data-zoom-assist="4"] .news-tools,
 body[data-zoom-assist="3"] .news-focus,
 body[data-zoom-assist="4"] .news-focus{
   padding-inline: 10px;
+}
+
+body[data-zoom-assist="2"] .clear-filters-btn,
+body[data-zoom-assist="3"] .clear-filters-btn,
+body[data-zoom-assist="4"] .clear-filters-btn{
+  width:100%;
+  justify-content:center;
 }
 
 body[data-zoom-assist="2"] .subscribe-panel,

@@ -20,9 +20,10 @@ function showAIToast(text, timeoutMs = 4500){
 }
 
 function levelFromMisses(misses){
-  if (misses >= 8) return 4;
-  if (misses >= 5) return 3;
-  if (misses >= 2) return 2;
+  if (misses >= 10) return 4;
+  if (misses >= 7) return 3;
+  if (misses >= 4) return 2;
+  if (misses >= 2) return 1;
   return 0;
 }
 
@@ -35,6 +36,7 @@ export function initAIAdapt({ a11y } = {}){
   let lastSelToastAt = 0;
   let lastMotionToastAt = 0;
   let lastFastAt = 0;
+  let lastMissLevel = 0;
   let fastScrollHits = 0;
   let motionReduced = false;
   let missTimes = [];
@@ -48,6 +50,9 @@ export function initAIAdapt({ a11y } = {}){
   let lastT = performance.now();
   const baseLayoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
   const baseVisualWidth = Math.max(window.visualViewport?.width || window.innerWidth || baseLayoutWidth, 1);
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const hoverCapable = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
+  const missWindowMs = coarsePointer ? 45000 : 30000;
 
   const INTERACTIVE_SEL =
     'button, a, input, select, textarea, [role="button"], .nav-pill, .ui-control';
@@ -96,6 +101,7 @@ export function initAIAdapt({ a11y } = {}){
       return;
     }
     document.body.classList.toggle('reduce-motion', enabled);
+    document.body.dataset.motionPref = enabled ? source : 'none';
   }
 
   function applySystemPrefs(){
@@ -112,10 +118,17 @@ export function initAIAdapt({ a11y } = {}){
     try{
       const more = window.matchMedia?.('(prefers-contrast: more)').matches;
       const forced = window.matchMedia?.('(forced-colors: active)').matches;
-      if ((more || forced) && !st.userSetTheme){
+      if (forced && !st.userSetTheme){
         a11y?.setAIState?.({ theme: 'high-contrast' });
         if (!st.userSetLinks) a11y?.setAIState?.({ underlineLinks: true });
         showAIToast('AI: увімкнув високий контраст за системними налаштуваннями.', 5200);
+      }else if (more){
+        const patch = {};
+        if (!st.userSetLinks) patch.underlineLinks = true;
+        if (!st.thickFocus) patch.thickFocus = true;
+        if (Object.keys(patch).length){
+          a11y?.setAIState?.(patch);
+        }
       }
     }catch{}
 
@@ -294,7 +307,7 @@ export function initAIAdapt({ a11y } = {}){
   function pushMiss(){
     const t = performance.now();
     missTimes.push(t);
-    missTimes = missTimes.filter((x) => (t - x) <= 30000);
+    missTimes = missTimes.filter((x) => (t - x) <= missWindowMs);
     return missTimes.length;
   }
 
@@ -330,33 +343,40 @@ export function initAIAdapt({ a11y } = {}){
     const header = e.target.closest('.site-header');
     if (!header) return;
 
-    const near = nearestInteractiveWithin(e.clientX, e.clientY, header, 30);
+    const near = nearestInteractiveWithin(e.clientX, e.clientY, header, coarsePointer ? 18 : 22);
     if (!near) return;
 
     const missCount = pushMiss();
     const targetLevel = levelFromMisses(missCount);
 
     if (mode() === 'gentle'){
-      document.body.classList.add('a11y-hover-glow');
-      document.body.classList.toggle('a11y-emphasize-click', missCount >= 2);
-      document.body.classList.toggle('focus-thick', missCount >= 3);
-      if (missCount === 2) showAIToast('AI: підсвітив елементи - схоже на промахи.', 5000);
+      if (hoverCapable && missCount >= 3){
+        document.body.classList.add('a11y-hover-glow');
+      }
+      document.body.classList.toggle('a11y-emphasize-click', missCount >= 3);
+      document.body.classList.toggle('focus-thick', missCount >= 5);
+      if (missCount === 3) showAIToast('AI: підсвітив елементи, бо схоже на кілька промахів поспіль.', 5000);
       return;
     }
 
     const st = currentState();
     a11y?.setAILevels?.({ aiLevelMiss: targetLevel });
     document.body.classList.toggle('a11y-emphasize-click', targetLevel >= 2);
-    document.body.classList.toggle('underline-links', targetLevel >= 2);
-    document.body.classList.toggle('focus-thick', missCount >= 4);
+    document.body.classList.toggle('underline-links', targetLevel >= 3);
+    document.body.classList.toggle('focus-thick', missCount >= 6);
     if (!st.userSetMotion){
-      document.body.classList.toggle('reduce-motion', missCount >= 4);
+      document.body.classList.toggle('reduce-motion', missCount >= 6);
     }
 
-    if (targetLevel >= 2){
+    if (hoverCapable && targetLevel >= 2){
       document.body.classList.add('a11y-hover-glow');
-      showAIToast(`AI: промахи (${missCount}/30с) - рівень ${targetLevel}.`, 5200);
     }
+
+    if (targetLevel > lastMissLevel && targetLevel >= 2){
+      showAIToast(`AI: зафіксував кілька промахів (${missCount}/${Math.round(missWindowMs / 1000)}с) і м'яко підсилив інтерфейс.`, 5200);
+    }
+
+    lastMissLevel = targetLevel;
   }, true);
 
   document.addEventListener('click', (e) => {
@@ -431,17 +451,9 @@ export function initAIAdapt({ a11y } = {}){
     }
   }, { passive: true });
 
-  if (mode() === 'auto' || mode() === 'gentle'){
+  if ((mode() === 'auto' || mode() === 'gentle') && hoverCapable){
     document.body.classList.add('a11y-hover-glow');
   }
-
-  try{
-    if (mode() === 'auto' && window.matchMedia?.('(pointer: coarse)').matches){
-      const st = currentState();
-      const next = Math.max(Number(st.aiLevelMiss ?? 0), 1);
-      a11y?.setAILevels?.({ aiLevelMiss: next });
-    }
-  }catch{}
 
   window.addEventListener('scroll', () => {
     if (mode() === 'off') return;

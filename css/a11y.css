@@ -23,16 +23,22 @@
 body[data-zoom-assist="2"] .a11y-fab,
 body[data-zoom-assist="3"] .a11y-fab,
 body[data-zoom-assist="4"] .a11y-fab{
-  right: calc(12px + env(safe-area-inset-right));
-  bottom: calc(12px + env(safe-area-inset-bottom));
-}
-
-body[data-zoom-assist="3"] .a11y-fab,
-body[data-zoom-assist="4"] .a11y-fab{
+  position:static;
+  right:auto;
+  bottom:auto;
+  min-height:44px;
+  box-shadow:none;
+  margin-left:0;
+  justify-self:end;
   width:48px;
   height:48px;
   border-radius:999px;
   font-size:20px;
+}
+
+body[data-zoom-assist="2"] .a11y-fab{
+  width:44px;
+  height:44px;
 }
 .a11y-fab:hover{
   transform:translateY(-2px) scale(1.02);
@@ -61,6 +67,12 @@ body[data-zoom-assist="4"] .a11y-fab{
 .a11y-fab:hover .fab-tooltip,
 .a11y-fab:focus-visible .fab-tooltip{opacity:1}
 
+body[data-zoom-assist="2"] .fab-tooltip,
+body[data-zoom-assist="3"] .fab-tooltip,
+body[data-zoom-assist="4"] .fab-tooltip{
+  display:none;
+}
+
 /* Backdrop */
 .backdrop{
   position:fixed;inset:0;
@@ -80,7 +92,7 @@ body[data-zoom-assist="4"] .a11y-fab{
   position:fixed;
   right:0;top:0;
   height:100dvh;
-  width:360px;
+  width:min(360px, 100vw);
   max-width:100vw;
   background: var(--bg-elevated);
   border-left:1px solid var(--border);

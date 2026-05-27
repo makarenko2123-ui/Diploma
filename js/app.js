@@ -41,6 +41,18 @@ ready(() => {
   let currentTrend = null;
   let lastDialogTrigger = null;
 
+  function syncSharedOverlayState(){
+    const body = document.body;
+    if (!body) return;
+
+    const hasPanel = body.dataset.a11yPanelOpen === 'true';
+    const hasNewsDialog = body.dataset.newsDialogOpen === 'true';
+    const shouldLock = hasPanel || hasNewsDialog;
+
+    body.classList.toggle('dialog-open', shouldLock);
+    if (pageBackdrop) pageBackdrop.hidden = !shouldLock;
+  }
+
   syncStickyOffsets();
 
   if ('ResizeObserver' in window) {
@@ -126,8 +138,8 @@ ready(() => {
   function closeNewsDialog({ restoreFocus = true } = {}){
     if (!newsDialog) return;
     newsDialog.hidden = true;
-    document.body.classList.remove('dialog-open');
-    if (pageBackdrop) pageBackdrop.hidden = true;
+    document.body.dataset.newsDialogOpen = 'false';
+    syncSharedOverlayState();
     if (restoreFocus) lastDialogTrigger?.focus?.();
   }
 
@@ -145,8 +157,8 @@ ready(() => {
       .join('');
 
     newsDialog.hidden = false;
-    document.body.classList.add('dialog-open');
-    if (pageBackdrop) pageBackdrop.hidden = false;
+    document.body.dataset.newsDialogOpen = 'true';
+    syncSharedOverlayState();
     newsDialogClose?.focus();
   }
 
@@ -412,8 +424,17 @@ ready(() => {
 
   updateClearFiltersVisibility();
 
-  tickerSection?.addEventListener('mouseenter', () => tickerController?.pause('user'));
-  tickerSection?.addEventListener('mouseleave', () => tickerController?.resume());
+  const canHoverTicker = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
+  if (canHoverTicker){
+    tickerSection?.addEventListener('pointerenter', (e) => {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      tickerController?.pause('user');
+    });
+    tickerSection?.addEventListener('pointerleave', (e) => {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      tickerController?.resume();
+    });
+  }
   tickerTrack?.addEventListener('ticker:pause', () => tickerController?.pause('ai'));
   tickerTrack?.addEventListener('ticker:resume', () => tickerController?.resume());
 });
@@ -440,7 +461,7 @@ function createTickerController(track){
   const speedPxPerSec = 42;
 
   function shouldReduceMotion(){
-    return document.body.dataset.motionPref === 'user' || !!mediaQuery?.matches;
+    return document.body.dataset.motionPref !== 'none' || !!mediaQuery?.matches;
   }
 
   function stop(){
@@ -574,6 +595,8 @@ function createTickerController(track){
   window.addEventListener('resize', () => {
     requestRestart();
   }, { passive: true });
+
+  window.visualViewport?.addEventListener('resize', requestRestart);
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stop();
