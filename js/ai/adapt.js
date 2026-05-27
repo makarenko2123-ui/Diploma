@@ -28,31 +28,86 @@ function levelFromMisses(misses){
 }
 
 export function initAIAdapt({ a11y } = {}){
-  if (mode() === 'off') return { notify: showAIToast };
-
   const SUBSCRIBE_FORM_ID = 'subscribe-form';
+  const INTERACTIVE_HIT_SEL =
+    'button, a[href], input, select, textarea, label, summary, [role="button"], .backdrop';
+  const MISS_SCOPE_SEL = [
+    '.site-header',
+    '.mobile-menu',
+    '.hero-card',
+    '.hero-actions',
+    '.news-focus',
+    '.news-tools',
+    '.news-list',
+    '.subscribe-panel',
+    '.a11y-panel',
+    '.panel-actions',
+    '.panel-body',
+    '.news-dialog',
+    '.trending',
+    '.quick-actions',
+    '.card'
+  ].join(', ');
 
   let lastZoomLevel = 0;
   let lastSelToastAt = 0;
   let lastMissLevel = 0;
   let missTimes = [];
+  let missDecayTimer = 0;
   let activeReadMs = 0;
   let readingAnchorAt = null;
   let longReadFired = false;
+  let readAssistFromSelection = false;
+  let readAssistFromLongRead = false;
   let sawTab = false;
   let tabCount = 0;
   let lastActivate = performance.now();
+  let lastGoodHitAt = 0;
+  let lastMode = null;
   const baseLayoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
   const baseVisualWidth = Math.max(window.visualViewport?.width || window.innerWidth || baseLayoutWidth, 1);
   const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
   const hoverCapable = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
   const missWindowMs = coarsePointer ? 45000 : 30000;
+  let lastPointerType = coarsePointer ? 'touch' : 'mouse';
 
   const INTERACTIVE_SEL =
-    'button, a, input, select, textarea, [role="button"], .nav-pill, .ui-control';
+    'button, a[href], input, select, textarea, label, [role="button"], .backdrop';
 
   function currentState(){
     return a11y?.getState?.() || {};
+  }
+
+  function currentMode(){
+    return mode();
+  }
+
+  function canAutoAdjustFocus(){
+    const st = currentState();
+    return !st.userSetFocus && !st.thickFocus;
+  }
+
+  function clearMissDecayTimer(){
+    if (missDecayTimer){
+      window.clearTimeout(missDecayTimer);
+      missDecayTimer = 0;
+    }
+  }
+
+  function pruneMisses(now = performance.now()){
+    missTimes = missTimes.filter((x) => (now - x) <= missWindowMs);
+    return missTimes.length;
+  }
+
+  function missLevelFromCount(count){
+    if (coarsePointer){
+      if (count >= 8) return 4;
+      if (count >= 6) return 3;
+      if (count >= 4) return 2;
+      if (count >= 2) return 1;
+      return 0;
+    }
+    return levelFromMisses(count);
   }
 
   function enableReadingMode(){
@@ -89,6 +144,138 @@ export function initAIAdapt({ a11y } = {}){
     return activeReadMs + (performance.now() - readingAnchorAt);
   }
 
+  function syncReadAssist({ announceText = '' } = {}){
+    const active = readAssistFromSelection || readAssistFromLongRead;
+    const st = currentState();
+
+    if (!active){
+      disableReadingMode();
+      if (Number(st.aiLevelRead ?? 0) !== 0){
+        a11y?.setAILevels?.({ aiLevelRead: 0 });
+      }
+      return;
+    }
+
+    if (currentMode() === 'auto'){
+      enableReadingMode();
+      const next = Math.max(Number(st.aiLevelRead ?? 0), 2);
+      if (next !== Number(st.aiLevelRead ?? 0)){
+        a11y?.setAILevels?.({ aiLevelRead: next });
+      }
+    }else if (currentMode() === 'gentle'){
+      enableGentleReadingMode();
+      if (Number(st.aiLevelRead ?? 0) !== 0){
+        a11y?.setAILevels?.({ aiLevelRead: 0 });
+      }
+    }else{
+      disableReadingMode();
+      if (Number(st.aiLevelRead ?? 0) !== 0){
+        a11y?.setAILevels?.({ aiLevelRead: 0 });
+      }
+      return;
+    }
+
+    if (announceText){
+      showAIToast(announceText, currentMode() === 'auto' ? 6000 : 5000);
+    }
+  }
+
+  function scheduleMissDecay(){
+    clearMissDecayTimer();
+    const missCount = pruneMisses();
+    if (!missCount) return;
+
+    const oldest = missTimes[0];
+    const now = performance.now();
+    const delay = Math.max(250, missWindowMs - (now - oldest) + 20);
+    missDecayTimer = window.setTimeout(() => {
+      syncMissAssist({ announce: false });
+    }, delay);
+  }
+
+  function syncMissAssist({ announce = true } = {}){
+    const st = currentState();
+    const missCount = pruneMisses();
+    const targetLevel = missLevelFromCount(missCount);
+
+    if (currentMode() === 'off'){
+      if (Number(st.aiLevelMiss ?? 0) !== 0){
+        a11y?.setAILevels?.({ aiLevelMiss: 0 });
+      }
+      document.body.classList.remove('a11y-emphasize-click', 'a11y-hover-glow');
+      if (canAutoAdjustFocus()){
+        document.body.classList.remove('focus-thick');
+      }
+      lastMissLevel = 0;
+      clearMissDecayTimer();
+      return 0;
+    }
+
+    if (currentMode() === 'gentle'){
+      if (hoverCapable){
+        document.body.classList.toggle('a11y-hover-glow', missCount >= 3);
+      }
+      document.body.classList.toggle('a11y-emphasize-click', missCount >= 3);
+      if (canAutoAdjustFocus()){
+        document.body.classList.toggle('focus-thick', missCount >= 5);
+      }
+      if (announce && missCount === 3 && lastMissLevel < 2){
+        showAIToast('AI: підсвітив елементи, бо схоже на кілька промахів поспіль.', 5000);
+      }
+      lastMissLevel = targetLevel;
+      scheduleMissDecay();
+      return targetLevel;
+    }
+
+    if (Number(st.aiLevelMiss ?? 0) !== targetLevel){
+      a11y?.setAILevels?.({ aiLevelMiss: targetLevel });
+    }
+
+    document.body.classList.toggle('a11y-emphasize-click', targetLevel >= 2);
+    if (hoverCapable){
+      document.body.classList.toggle('a11y-hover-glow', targetLevel >= 2);
+    }
+    if (canAutoAdjustFocus()){
+      document.body.classList.toggle('focus-thick', missCount >= 6);
+    }
+
+    if (announce && targetLevel > lastMissLevel && targetLevel >= 2){
+      showAIToast(`AI: зафіксував кілька промахів (${missCount}/${Math.round(missWindowMs / 1000)}с) і м'яко підсилив інтерфейс.`, 5200);
+    }
+
+    lastMissLevel = targetLevel;
+    scheduleMissDecay();
+    return targetLevel;
+  }
+
+  function settleMissesAfterSuccess(){
+    if (!missTimes.length) return;
+
+    const now = performance.now();
+    if (now - lastGoodHitAt < 700) return;
+    lastGoodHitAt = now;
+
+    pruneMisses(now);
+    if (!missTimes.length){
+      syncMissAssist({ announce: false });
+      return;
+    }
+
+    missTimes.shift();
+    syncMissAssist({ announce: false });
+  }
+
+  function resolveMissScope(target){
+    return target?.closest?.(MISS_SCOPE_SEL)
+      || document.querySelector('#main')
+      || document.body;
+  }
+
+  function getMissRadius(){
+    if (lastPointerType === 'touch' || lastPointerType === 'pen') return 30;
+    return coarsePointer ? 28 : 22;
+  }
+
   function applySystemPrefs(){
     const st = currentState();
 
@@ -102,7 +289,7 @@ export function initAIAdapt({ a11y } = {}){
       }else if (more){
         const patch = {};
         if (!st.userSetLinks) patch.underlineLinks = true;
-        if (!st.thickFocus) patch.thickFocus = true;
+        if (canAutoAdjustFocus()) patch.thickFocus = true;
         if (Object.keys(patch).length){
           a11y?.setAIState?.(patch);
         }
@@ -178,7 +365,9 @@ export function initAIAdapt({ a11y } = {}){
 
     const msg = messageFromValidity(first);
     ensureInlineError(first, msg);
-    document.body.classList.add('focus-thick');
+    if (canAutoAdjustFocus()){
+      document.body.classList.add('focus-thick');
+    }
     showAIToast(`AI: помилка у формі - ${msg}`, 5200);
     return true;
   }
@@ -292,8 +481,7 @@ export function initAIAdapt({ a11y } = {}){
   function pushMiss(){
     const t = performance.now();
     missTimes.push(t);
-    missTimes = missTimes.filter((x) => (t - x) <= missWindowMs);
-    return missTimes.length;
+    return pruneMisses(t);
   }
 
   function nearestInteractiveWithin(x, y, root, maxDist = 28){
@@ -317,58 +505,37 @@ export function initAIAdapt({ a11y } = {}){
     return bestD <= maxDist ? { el: best, dist: bestD } : null;
   }
 
-  document.addEventListener('click', (e) => {
-    if (mode() === 'off') return;
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary) return;
+    lastPointerType = e.pointerType || lastPointerType;
+  }, true);
 
-    const btn = e.target.closest('button, [role="button"], .ui-control');
-    if (btn){
+  document.addEventListener('click', (e) => {
+    if (currentMode() === 'off') return;
+    if (e.defaultPrevented || e.detail === 0) return;
+
+    const hit = e.target.closest(INTERACTIVE_HIT_SEL);
+    if (hit){
+      settleMissesAfterSuccess();
       return;
     }
 
-    const header = e.target.closest('.site-header');
-    if (!header) return;
-
-    const near = nearestInteractiveWithin(e.clientX, e.clientY, header, coarsePointer ? 18 : 22);
+    const scope = resolveMissScope(e.target);
+    const near = nearestInteractiveWithin(e.clientX, e.clientY, scope, getMissRadius());
     if (!near) return;
 
-    const missCount = pushMiss();
-    const targetLevel = levelFromMisses(missCount);
-
-    if (mode() === 'gentle'){
-      if (hoverCapable && missCount >= 3){
-        document.body.classList.add('a11y-hover-glow');
-      }
-      document.body.classList.toggle('a11y-emphasize-click', missCount >= 3);
-      if (!currentState().thickFocus){
-        document.body.classList.toggle('focus-thick', missCount >= 5);
-      }
-      if (missCount === 3) showAIToast('AI: підсвітив елементи, бо схоже на кілька промахів поспіль.', 5000);
-      return;
-    }
-
-    const st = currentState();
-    a11y?.setAILevels?.({ aiLevelMiss: targetLevel });
-    document.body.classList.toggle('a11y-emphasize-click', targetLevel >= 2);
-    if (!st.thickFocus){
-      document.body.classList.toggle('focus-thick', missCount >= 6);
-    }
-
-    if (hoverCapable && targetLevel >= 2){
-      document.body.classList.add('a11y-hover-glow');
-    }
-
-    if (targetLevel > lastMissLevel && targetLevel >= 2){
-      showAIToast(`AI: зафіксував кілька промахів (${missCount}/${Math.round(missWindowMs / 1000)}с) і м'яко підсилив інтерфейс.`, 5200);
-    }
-
-    lastMissLevel = targetLevel;
+    pushMiss();
+    syncMissAssist({ announce: true });
   }, true);
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('#a11y-reset');
     if (!btn) return;
+    readAssistFromSelection = false;
+    readAssistFromLongRead = false;
     disableReadingMode();
     resetLongReadTracking();
+    syncReadAssist();
   }, true);
 
   document.addEventListener('submit', (e) => {
@@ -415,7 +582,7 @@ export function initAIAdapt({ a11y } = {}){
     if (mode() === 'off') return;
     if (e.key === 'Tab' && !sawTab){
       sawTab = true;
-      if (!currentState().thickFocus){
+      if (canAutoAdjustFocus()){
         document.body.classList.add('focus-thick');
       }
       showAIToast('AI: підсилив фокус для керування клавіатурою.');
@@ -431,7 +598,7 @@ export function initAIAdapt({ a11y } = {}){
     tabCount++;
     if (mode() === 'auto' && tabCount >= 8 && (performance.now() - lastActivate) > 6000){
       document.body.classList.add('a11y-hover-glow', 'a11y-emphasize-click');
-      if (!currentState().thickFocus){
+      if (canAutoAdjustFocus()){
         document.body.classList.add('focus-thick');
       }
       showAIToast('AI: підсилив навігацію для клавіатури.', 5000);
@@ -444,6 +611,10 @@ export function initAIAdapt({ a11y } = {}){
 
     const y = window.scrollY || document.documentElement.scrollTop;
     if (y < 200){
+      if (readAssistFromLongRead){
+        readAssistFromLongRead = false;
+        syncReadAssist();
+      }
       resetLongReadTracking();
     }else if (!longReadFired){
       resumeLongReadTracking();
@@ -452,14 +623,12 @@ export function initAIAdapt({ a11y } = {}){
         longReadFired = true;
 
         if (mode() === 'auto'){
-          enableReadingMode();
-          const st = currentState();
-          const next = Math.max(Number(st.aiLevelRead ?? 0), 2);
-          a11y?.setAILevels?.({ aiLevelRead: next });
+          readAssistFromLongRead = true;
+          syncReadAssist();
           showAIToast('AI: увімкнув режим читабельності для довгого читання.', 6000);
         }else if (mode() === 'gentle'){
-          enableGentleReadingMode();
-          document.body.classList.add('measure-all');
+          readAssistFromLongRead = true;
+          syncReadAssist();
           showAIToast('AI: м\'яко підсилив читабельність для довгого читання.', 5000);
         }
       }
@@ -475,6 +644,8 @@ export function initAIAdapt({ a11y } = {}){
     if ((window.scrollY || document.documentElement.scrollTop) >= 200){
       resumeLongReadTracking();
     }else{
+      readAssistFromLongRead = false;
+      syncReadAssist();
       resetLongReadTracking();
     }
   });
@@ -484,6 +655,8 @@ export function initAIAdapt({ a11y } = {}){
     if ((window.scrollY || document.documentElement.scrollTop) >= 200){
       resumeLongReadTracking();
     }else{
+      readAssistFromLongRead = false;
+      syncReadAssist();
       resetLongReadTracking();
     }
   }, { passive: true });
@@ -493,16 +666,14 @@ export function initAIAdapt({ a11y } = {}){
 
     const sel = document.getSelection?.();
     const txt = sel?.toString()?.trim() || '';
-    if (txt.length < 12) return;
+    readAssistFromSelection = txt.length >= 12;
 
-    if (mode() === 'auto'){
-      enableReadingMode();
-      const st = currentState();
-      const next = Math.max(Number(st.aiLevelRead ?? 0), 2);
-      a11y?.setAILevels?.({ aiLevelRead: next });
-    }else if (mode() === 'gentle'){
-      enableGentleReadingMode();
+    if (!readAssistFromSelection){
+      syncReadAssist();
+      return;
     }
+
+    syncReadAssist();
 
     const t = performance.now();
     if (t - lastSelToastAt > 15000){
@@ -516,13 +687,49 @@ export function initAIAdapt({ a11y } = {}){
     }
   });
 
+  function clearAutoAssistState(){
+    const st = currentState();
+    const patch = {};
+
+    if (Number(st.aiLevel ?? 0) !== 0) patch.aiLevel = 0;
+    if (Number(st.aiLevelZoom ?? 0) !== 0) patch.aiLevelZoom = 0;
+    if (Number(st.aiLevelMiss ?? 0) !== 0) patch.aiLevelMiss = 0;
+    if (Number(st.aiLevelRead ?? 0) !== 0) patch.aiLevelRead = 0;
+    if (!st.userSetMotion && st.reduceMotion) patch.reduceMotion = false;
+
+    if (!Object.keys(patch).length) return;
+    a11y?.setAIState?.(patch);
+  }
+
+  function handleModeChange(force = false){
+    const nextMode = currentMode();
+    if (!force && nextMode === lastMode) return;
+    lastMode = nextMode;
+
+    resetAIState();
+
+    if (nextMode !== 'auto'){
+      clearAutoAssistState();
+      return;
+    }
+
+    clearAutoAssistState();
+    applySystemPrefs();
+    handleZoomChange();
+    syncMissAssist({ announce: false });
+    readAssistFromSelection = (document.getSelection ? (document.getSelection()?.toString()?.trim() || '') : '').length >= 12;
+    syncReadAssist();
+  }
+
   setTimeout(checkContrastAndAdapt, 350);
   window.addEventListener('resize', () => { try { checkContrastAndAdapt(); } catch {} }, { passive: true });
   window.addEventListener('resize', handleZoomChange, { passive: true });
   window.visualViewport?.addEventListener('resize', handleZoomChange);
   window.visualViewport?.addEventListener('scroll', handleZoomChange);
-  handleZoomChange();
-  applySystemPrefs();
+
+  const modeObserver = new MutationObserver(() => handleModeChange());
+  modeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ai-mode'] });
+  handleModeChange(true);
 
   const ticker = document.getElementById('ticker-track');
   const isTickerPausedByUser = () => ticker?.dataset?.userPaused === 'true';
@@ -551,11 +758,23 @@ export function initAIAdapt({ a11y } = {}){
     lastSelToastAt = 0;
     lastMissLevel = 0;
     missTimes = [];
+    clearMissDecayTimer();
+    readAssistFromSelection = false;
+    readAssistFromLongRead = false;
     sawTab = false;
     tabCount = 0;
     lastActivate = performance.now();
 
     body.classList.remove('a11y-reading-ruler', 'a11y-declutter', 'a11y-emphasize-click', 'a11y-hover-glow');
+    if (!currentState().thickFocus){
+      body.classList.remove('focus-thick');
+    }
+    if (Number(currentState().aiLevelMiss ?? 0) !== 0){
+      a11y?.setAILevels?.({ aiLevelMiss: 0 });
+    }
+    if (Number(currentState().aiLevelRead ?? 0) !== 0){
+      a11y?.setAILevels?.({ aiLevelRead: 0 });
+    }
     resetLongReadTracking();
   }
 

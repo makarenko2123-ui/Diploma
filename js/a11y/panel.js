@@ -18,6 +18,7 @@ const DEFAULTS = {
   userSetTheme: false,
   userSetTypography: false,
   userSetMotion: false,
+  userSetFocus: false,
   userSetLinks: false,
   ttsRate: 1
 };
@@ -67,6 +68,7 @@ function sanitizeState(s){
   out.userSetTheme = !!out.userSetTheme;
   out.userSetTypography = !!out.userSetTypography;
   out.userSetMotion = !!out.userSetMotion;
+  out.userSetFocus = !!out.userSetFocus;
   out.userSetLinks = !!out.userSetLinks;
 
   return out;
@@ -79,7 +81,9 @@ function applyState(state){
 
   const effectiveLevel = Math.max(
     Number(state.userLevel ?? 0),
-    Number(state.aiLevel ?? 0)
+    Number(state.aiLevel ?? 0),
+    Number(state.aiMode === 'auto' ? (state.aiLevelMiss ?? 0) : 0),
+    Number(state.aiMode === 'auto' ? (state.aiLevelRead ?? 0) : 0)
   );
 
   const lvl = Math.max(0, Math.min(4, effectiveLevel));
@@ -237,6 +241,7 @@ export function initA11yPanel({ tts } = {}){
       if ('theme' in patch) next.userSetTheme = true;
       if ('letterSpaceEm' in patch || 'fontfam' in patch) next.userSetTypography = true;
       if ('reduceMotion' in patch) next.userSetMotion = true;
+      if ('thickFocus' in patch || 'focusAlways' in patch) next.userSetFocus = true;
       if ('underlineLinks' in patch) next.userSetLinks = true;
     }
 
