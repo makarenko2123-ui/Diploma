@@ -419,11 +419,6 @@ ready(() => {
       }
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {
-      e.preventDefault();
-      resetExperienceState();
-      updateClearFiltersVisibility();
-    }
   });
 
   updateClearFiltersVisibility();

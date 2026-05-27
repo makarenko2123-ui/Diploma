@@ -91,6 +91,13 @@ function clearRenderTimers(){
   _renderTimers = [];
 }
 
+function shouldReduceMotion(){
+  const pref = document.body?.dataset?.motionPref;
+  if (pref === 'allow') return false;
+  if (pref === 'user' || pref === 'auto' || pref === 'gentle') return true;
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
 function matches(item){
   if (_filter !== 'all' && item.category !== _filter) return false;
   if (!_query) return true;
@@ -169,6 +176,15 @@ function render(){
 
   requestAnimationFrame(() => {
     const cards = _mount.querySelectorAll('.card');
+
+    if (shouldReduceMotion()){
+      cards.forEach((card) => {
+        card.classList.remove('hidden');
+        card.classList.add('visible');
+      });
+      return;
+    }
+
     cards.forEach((card, index) => {
       card.classList.add('hidden');
       const timerId = setTimeout(() => {

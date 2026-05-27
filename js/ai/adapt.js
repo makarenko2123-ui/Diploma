@@ -34,11 +34,7 @@ export function initAIAdapt({ a11y } = {}){
 
   let lastZoomLevel = 0;
   let lastSelToastAt = 0;
-  let lastMotionToastAt = 0;
-  let lastFastAt = 0;
   let lastMissLevel = 0;
-  let fastScrollHits = 0;
-  let motionReduced = false;
   let missTimes = [];
   let activeReadMs = 0;
   let readingAnchorAt = null;
@@ -46,8 +42,6 @@ export function initAIAdapt({ a11y } = {}){
   let sawTab = false;
   let tabCount = 0;
   let lastActivate = performance.now();
-  let lastY = window.scrollY || 0;
-  let lastT = performance.now();
   const baseLayoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
   const baseVisualWidth = Math.max(window.visualViewport?.width || window.innerWidth || baseLayoutWidth, 1);
   const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
@@ -62,7 +56,7 @@ export function initAIAdapt({ a11y } = {}){
   }
 
   function enableReadingMode(){
-    document.body.classList.add('a11y-reading-ruler', 'a11y-declutter');
+    document.body.classList.add('a11y-reading-ruler');
   }
 
   function enableGentleReadingMode(){
@@ -93,18 +87,6 @@ export function initAIAdapt({ a11y } = {}){
   function getLongReadElapsed(){
     if (readingAnchorAt === null) return activeReadMs;
     return activeReadMs + (performance.now() - readingAnchorAt);
-  }
-
-  function setReducedMotion(enabled, source = 'auto'){
-    if (source !== 'user' && a11y?.setAIState){
-      a11y.setAIState({ reduceMotion: enabled });
-      return;
-    }
-    const root = document.documentElement;
-    document.body.classList.toggle('reduce-motion', enabled);
-    const motionPref = enabled ? 'user' : 'allow';
-    document.body.dataset.motionPref = motionPref;
-    root.dataset.motionPref = motionPref;
   }
 
   function applySystemPrefs(){
@@ -357,7 +339,9 @@ export function initAIAdapt({ a11y } = {}){
         document.body.classList.add('a11y-hover-glow');
       }
       document.body.classList.toggle('a11y-emphasize-click', missCount >= 3);
-      document.body.classList.toggle('focus-thick', missCount >= 5);
+      if (!currentState().thickFocus){
+        document.body.classList.toggle('focus-thick', missCount >= 5);
+      }
       if (missCount === 3) showAIToast('AI: підсвітив елементи, бо схоже на кілька промахів поспіль.', 5000);
       return;
     }
@@ -365,10 +349,8 @@ export function initAIAdapt({ a11y } = {}){
     const st = currentState();
     a11y?.setAILevels?.({ aiLevelMiss: targetLevel });
     document.body.classList.toggle('a11y-emphasize-click', targetLevel >= 2);
-    document.body.classList.toggle('underline-links', targetLevel >= 3);
-    document.body.classList.toggle('focus-thick', missCount >= 6);
-    if (!st.userSetMotion){
-      document.body.classList.toggle('reduce-motion', missCount >= 6);
+    if (!st.thickFocus){
+      document.body.classList.toggle('focus-thick', missCount >= 6);
     }
 
     if (hoverCapable && targetLevel >= 2){
@@ -386,8 +368,6 @@ export function initAIAdapt({ a11y } = {}){
     const btn = e.target.closest('#a11y-reset');
     if (!btn) return;
     disableReadingMode();
-    motionReduced = false;
-    fastScrollHits = 0;
     resetLongReadTracking();
   }, true);
 
@@ -435,7 +415,9 @@ export function initAIAdapt({ a11y } = {}){
     if (mode() === 'off') return;
     if (e.key === 'Tab' && !sawTab){
       sawTab = true;
-      document.body.classList.add('focus-thick');
+      if (!currentState().thickFocus){
+        document.body.classList.add('focus-thick');
+      }
       showAIToast('AI: підсилив фокус для керування клавіатурою.');
     }
   }, { passive: true });
@@ -448,7 +430,10 @@ export function initAIAdapt({ a11y } = {}){
 
     tabCount++;
     if (mode() === 'auto' && tabCount >= 8 && (performance.now() - lastActivate) > 6000){
-      document.body.classList.add('a11y-hover-glow', 'a11y-emphasize-click', 'focus-thick');
+      document.body.classList.add('a11y-hover-glow', 'a11y-emphasize-click');
+      if (!currentState().thickFocus){
+        document.body.classList.add('focus-thick');
+      }
       showAIToast('AI: підсилив навігацію для клавіатури.', 5000);
       tabCount = 0;
     }
@@ -479,43 +464,6 @@ export function initAIAdapt({ a11y } = {}){
         }
       }
     }
-
-    const t = performance.now();
-    const dy = Math.abs(y - lastY);
-    const dt = Math.max(16, t - lastT);
-    const speed = dy / dt;
-    const st = currentState();
-
-    if (!st.userSetMotion){
-      const isFast = speed > 2.8 && dy > 180;
-      if (isFast){
-        if (t - lastFastAt < 1200) fastScrollHits++;
-        else fastScrollHits = 1;
-        lastFastAt = t;
-      }else if (t - lastFastAt > 1600){
-        fastScrollHits = 0;
-      }
-
-      if (!motionReduced && fastScrollHits >= 3){
-        motionReduced = true;
-
-        if (mode() === 'auto') setReducedMotion(true, 'auto');
-        else if (mode() === 'gentle') setReducedMotion(true, 'gentle');
-
-        if (t - lastMotionToastAt > 30000){
-          lastMotionToastAt = t;
-          showAIToast(
-            mode() === 'auto'
-              ? 'AI: зменшив анімації через різкий скрол.'
-              : 'AI: м\'яко зменшив анімації через різкий скрол.',
-            4500
-          );
-        }
-      }
-    }
-
-    lastY = y;
-    lastT = t;
   }, { passive: true });
 
   document.addEventListener('visibilitychange', () => {
@@ -601,11 +549,7 @@ export function initAIAdapt({ a11y } = {}){
 
     lastZoomLevel = 0;
     lastSelToastAt = 0;
-    lastMotionToastAt = 0;
-    lastFastAt = 0;
     lastMissLevel = 0;
-    fastScrollHits = 0;
-    motionReduced = false;
     missTimes = [];
     sawTab = false;
     tabCount = 0;

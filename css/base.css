@@ -143,6 +143,12 @@ body.reduce-motion{
   scroll-behavior:auto !important;
 }
 
+html[data-motion-pref="user"],
+html[data-motion-pref="auto"],
+html[data-motion-pref="gentle"]{
+  scroll-behavior:auto !important;
+}
+
 /* Reduce motion (system preference) */
 @media (prefers-reduced-motion: reduce){
   body:not([data-motion-pref="allow"]) *,

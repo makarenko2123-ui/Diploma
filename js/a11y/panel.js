@@ -79,9 +79,7 @@ function applyState(state){
 
   const effectiveLevel = Math.max(
     Number(state.userLevel ?? 0),
-    Number(state.aiLevel ?? 0),
-    Number(state.aiLevelMiss ?? 0),
-    Number(state.aiLevelRead ?? 0)
+    Number(state.aiLevel ?? 0)
   );
 
   const lvl = Math.max(0, Math.min(4, effectiveLevel));

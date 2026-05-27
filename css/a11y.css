@@ -184,6 +184,7 @@ body.dialog-open{
   border:1px solid var(--border);
   background: rgba(255,255,255,0.04);
   color: var(--fg);
+  font-size:max(16px, 1rem);
 }
 
 /* Backdrop fade helper (optional) */
@@ -249,8 +250,18 @@ body.dialog-open{
     border-left:none;
   }
 
+  .panel-head{
+    padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 14px calc(16px + env(safe-area-inset-left));
+  }
+
+  .panel-body{
+    padding:14px calc(16px + env(safe-area-inset-right)) 12px calc(16px + env(safe-area-inset-left));
+  }
+
   .panel-actions{
     flex-direction:column;
+    padding-left:calc(16px + env(safe-area-inset-left));
+    padding-right:calc(16px + env(safe-area-inset-right));
   }
 
   .panel-actions > *{
