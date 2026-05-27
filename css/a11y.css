@@ -215,13 +215,13 @@ body.dialog-open{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .a11y-fab,
-  .backdrop{
+  body:not([data-motion-pref="allow"]) .a11y-fab,
+  body:not([data-motion-pref="allow"]) .backdrop{
     transition: none;
   }
 
-  .a11y-fab:hover,
-  .a11y-fab:active{
+  body:not([data-motion-pref="allow"]) .a11y-fab:hover,
+  body:not([data-motion-pref="allow"]) .a11y-fab:active{
     transform: none;
   }
 }

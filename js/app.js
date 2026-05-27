@@ -287,7 +287,11 @@ ready(() => {
   });
 
   document.addEventListener('a11y:reset-all', () => {
+    document.body.dataset.newsDialogOpen = 'false';
+    document.body.dataset.a11yPanelOpen = 'false';
     resetExperienceState();
+    syncSharedOverlayState();
+    ai?.reset?.();
     ensureTickerRunning(true);
     updateClearFiltersVisibility();
   });
@@ -461,7 +465,10 @@ function createTickerController(track){
   const speedPxPerSec = 42;
 
   function shouldReduceMotion(){
-    return document.body.dataset.motionPref !== 'none' || !!mediaQuery?.matches;
+    const pref = document.body.dataset.motionPref;
+    if (pref === 'allow') return false;
+    if (pref === 'user' || pref === 'auto' || pref === 'gentle') return true;
+    return document.body.classList.contains('reduce-motion') || !!mediaQuery?.matches;
   }
 
   function stop(){

@@ -80,7 +80,6 @@ function applyState(state){
   const effectiveLevel = Math.max(
     Number(state.userLevel ?? 0),
     Number(state.aiLevel ?? 0),
-    Number(state.aiLevelZoom ?? 0),
     Number(state.aiLevelMiss ?? 0),
     Number(state.aiLevelRead ?? 0)
   );
@@ -101,9 +100,12 @@ function applyState(state){
   body.classList.toggle('measure-all', !!state.measureGlobal);
   body.classList.toggle('focus-always', !!state.focusAlways);
   body.classList.toggle('reduce-motion', !!state.reduceMotion);
-  body.dataset.motionPref = state.reduceMotion
+  const motionPref = state.reduceMotion
     ? (state.userSetMotion ? 'user' : 'auto')
-    : 'none';
+    : (state.userSetMotion ? 'allow' : 'system');
+
+  body.dataset.motionPref = motionPref;
+  root.dataset.motionPref = motionPref;
 
   body.dataset.aiMode = state.aiMode;
   body.dataset.zoomAssist = String(Number(state.aiLevelZoom ?? 0));
@@ -360,7 +362,7 @@ export function initA11yPanel({ tts } = {}){
   });
 
   reset?.addEventListener('click', () => {
-    state = { ...DEFAULTS };
+    state = { ...DEFAULTS, userSetMotion: true };
     applyState(state);
     save(state);
     syncUI();

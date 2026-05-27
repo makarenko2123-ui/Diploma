@@ -96,24 +96,19 @@ export function initAIAdapt({ a11y } = {}){
   }
 
   function setReducedMotion(enabled, source = 'auto'){
-    if (source === 'auto' && a11y?.setAIState){
+    if (source !== 'user' && a11y?.setAIState){
       a11y.setAIState({ reduceMotion: enabled });
       return;
     }
+    const root = document.documentElement;
     document.body.classList.toggle('reduce-motion', enabled);
-    document.body.dataset.motionPref = enabled ? source : 'none';
+    const motionPref = enabled ? 'user' : 'allow';
+    document.body.dataset.motionPref = motionPref;
+    root.dataset.motionPref = motionPref;
   }
 
   function applySystemPrefs(){
     const st = currentState();
-
-    try{
-      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      if (reduce && !st.userSetMotion){
-        a11y?.setAIState?.({ reduceMotion: true });
-        showAIToast('AI: врахував системне налаштування зменшення руху.', 4500);
-      }
-    }catch{}
 
     try{
       const more = window.matchMedia?.('(prefers-contrast: more)').matches;
@@ -277,6 +272,14 @@ export function initAIAdapt({ a11y } = {}){
     const visualWidth = Math.max(window.visualViewport?.width || window.innerWidth || layoutWidth, 1);
     const layoutFactor = baseLayoutWidth / layoutWidth;
     const visualFactor = baseVisualWidth / visualWidth;
+
+    if (coarsePointer){
+      if (window.visualViewport){
+        return Math.max(1, vv / baseVV);
+      }
+      return Math.max(1, layoutFactor);
+    }
+
     return Math.max(dpr / baseDPR, vv / baseVV, layoutFactor, visualFactor);
   }
 
@@ -451,10 +454,6 @@ export function initAIAdapt({ a11y } = {}){
     }
   }, { passive: true });
 
-  if ((mode() === 'auto' || mode() === 'gentle') && hoverCapable){
-    document.body.classList.add('a11y-hover-glow');
-  }
-
   window.addEventListener('scroll', () => {
     if (mode() === 'off') return;
 
@@ -596,7 +595,29 @@ export function initAIAdapt({ a11y } = {}){
     else playTicker();
   });
 
+  function resetAIState(){
+    const body = document.body;
+    if (!body) return;
+
+    lastZoomLevel = 0;
+    lastSelToastAt = 0;
+    lastMotionToastAt = 0;
+    lastFastAt = 0;
+    lastMissLevel = 0;
+    fastScrollHits = 0;
+    motionReduced = false;
+    missTimes = [];
+    sawTab = false;
+    tabCount = 0;
+    lastActivate = performance.now();
+
+    body.classList.remove('a11y-reading-ruler', 'a11y-declutter', 'a11y-emphasize-click', 'a11y-hover-glow');
+    resetLongReadTracking();
+  }
+
+  document.addEventListener('a11y:reset-all', resetAIState);
+
   resetLongReadTracking();
 
-  return { notify: showAIToast };
+  return { notify: showAIToast, reset: resetAIState };
 }

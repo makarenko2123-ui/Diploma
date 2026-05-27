@@ -55,6 +55,7 @@
   display:none;
   position:relative;
   width:42px;height:34px;
+  min-width:42px;
   border-radius:999px;
   border:1px solid rgba(148,163,184,0.7);
   background:rgba(15,23,42,0.6);
@@ -372,7 +373,14 @@ body[data-zoom-assist="4"] .back-to-top{
 body[data-zoom-assist="2"] .ticker-track,
 body[data-zoom-assist="3"] .ticker-track,
 body[data-zoom-assist="4"] .ticker-track{
+  gap: 12px;
   padding-inline: 14px;
+}
+
+body[data-zoom-assist="2"] .ticker-item,
+body[data-zoom-assist="3"] .ticker-item,
+body[data-zoom-assist="4"] .ticker-item{
+  font-size:0.9rem;
 }
 
 body[data-zoom-assist="3"] .btn-primary,
@@ -452,12 +460,12 @@ body[data-zoom-assist="4"] .card-body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .ticker-track{
+  body:not([data-motion-pref="allow"]) .ticker-track{
     transform: none;
   }
 
-  .burger span,
-  .nav-pill{
+  body:not([data-motion-pref="allow"]) .burger span,
+  body:not([data-motion-pref="allow"]) .nav-pill{
     transition: none;
   }
 }

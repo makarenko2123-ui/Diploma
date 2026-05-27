@@ -113,7 +113,7 @@ body.a11y-declutter .hero-media{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .ai-indicator{
+  body:not([data-motion-pref="allow"]) .ai-indicator{
     transition: none;
     transform: none;
   }

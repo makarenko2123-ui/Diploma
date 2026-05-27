@@ -145,11 +145,13 @@ body.reduce-motion{
 
 /* Reduce motion (system preference) */
 @media (prefers-reduced-motion: reduce){
-  *, *::before, *::after{
+  body:not([data-motion-pref="allow"]) *,
+  body:not([data-motion-pref="allow"]) *::before,
+  body:not([data-motion-pref="allow"]) *::after{
     animation: none !important;
     transition: none !important;
   }
-  html { scroll-behavior:auto !important; }
+  html:not([data-motion-pref="allow"]) { scroll-behavior:auto !important; }
 }
 
 /* AI / A11Y: hover highlight mode */
