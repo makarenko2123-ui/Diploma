@@ -120,9 +120,9 @@ a{color:inherit;}
 }
 .skip-link:focus{ left:16px;top:16px; }
 
-/* Reduce motion (manual class) */
-body.reduce-motion *,
-body.reduce-motion{
+/* Reduce motion (manual user choice only) */
+body[data-motion-pref="user"] *,
+body[data-motion-pref="user"]{
   animation:none !important;
   transition:none !important;
   scroll-behavior:auto !important;

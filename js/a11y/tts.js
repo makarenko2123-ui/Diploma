@@ -41,7 +41,7 @@ export function initTTS(){
   const voiceSelect = document.getElementById('tts-voice');
   const rateRange = document.getElementById('tts-rate');
   const sampleBtn = document.getElementById('tts-sample');
-  const SETTINGS_KEY = 'a11y.settings.v2';
+  const SETTINGS_KEY = 'a11y.settings.v3';
 
   function readSavedRate(){
     try{

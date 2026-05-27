@@ -1,4 +1,4 @@
-const KEY = 'a11y.settings.v2';
+const KEY = 'a11y.settings.v3';
 
 const DEFAULTS = {
   fontfam: 'hyperlegible',
