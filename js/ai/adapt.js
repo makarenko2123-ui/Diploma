@@ -31,7 +31,6 @@ export function initAIAdapt({ a11y } = {}){
 
   const SUBSCRIBE_FORM_ID = 'subscribe-form';
 
-  let lastContrastToastAt = 0;
   let lastZoomLevel = 0;
   let lastSelToastAt = 0;
   let lastMotionToastAt = 0;
@@ -47,6 +46,8 @@ export function initAIAdapt({ a11y } = {}){
   let lastActivate = performance.now();
   let lastY = window.scrollY || 0;
   let lastT = performance.now();
+  const baseLayoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
+  const baseVisualWidth = Math.max(window.visualViewport?.width || window.innerWidth || baseLayoutWidth, 1);
 
   const INTERACTIVE_SEL =
     'button, a, input, select, textarea, [role="button"], .nav-pill, .ui-control';
@@ -250,16 +251,7 @@ export function initAIAdapt({ a11y } = {}){
       worst = Math.min(worst, contrastRatio(fg, bg));
     }
 
-    if (worst < 4.5){
-      if (!st.userSetLinks) a11y?.setAIState?.({ underlineLinks: true });
-      a11y?.setAIState?.({ theme: 'high-contrast' });
-
-      const t = performance.now();
-      if (t - lastContrastToastAt > 60000){
-        lastContrastToastAt = t;
-        showAIToast('AI: підсилив контраст і видимість посилань.', 6000);
-      }
-    }
+    void worst;
   }
 
   const baseDPR = window.devicePixelRatio || 1;
@@ -268,7 +260,11 @@ export function initAIAdapt({ a11y } = {}){
   function getZoomFactor(){
     const dpr = window.devicePixelRatio || 1;
     const vv = window.visualViewport?.scale || 1;
-    return Math.max(dpr / baseDPR, vv / baseVV);
+    const layoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
+    const visualWidth = Math.max(window.visualViewport?.width || window.innerWidth || layoutWidth, 1);
+    const layoutFactor = baseLayoutWidth / layoutWidth;
+    const visualFactor = baseVisualWidth / visualWidth;
+    return Math.max(dpr / baseDPR, vv / baseVV, layoutFactor, visualFactor);
   }
 
   function levelFromZoomFactor(z){

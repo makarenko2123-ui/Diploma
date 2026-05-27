@@ -440,7 +440,7 @@ function createTickerController(track){
   const speedPxPerSec = 42;
 
   function shouldReduceMotion(){
-    return document.body.classList.contains('reduce-motion') || !!mediaQuery?.matches;
+    return document.body.dataset.motionPref === 'user' || !!mediaQuery?.matches;
   }
 
   function stop(){

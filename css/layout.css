@@ -256,7 +256,10 @@
 
 .subscribe-panel{
   padding:18px;
-  margin:16px 0 28px;
+  width:min(1120px, calc(100% - 40px));
+  max-width:1120px;
+  margin:16px auto 28px;
+  box-sizing:border-box;
   display:grid;
   gap:12px;
 }
@@ -312,6 +315,12 @@ body[data-zoom-assist="4"] .news-tools,
 body[data-zoom-assist="3"] .news-focus,
 body[data-zoom-assist="4"] .news-focus{
   padding-inline: 10px;
+}
+
+body[data-zoom-assist="2"] .subscribe-panel,
+body[data-zoom-assist="3"] .subscribe-panel,
+body[data-zoom-assist="4"] .subscribe-panel{
+  width:min(1000px, calc(100% - 28px));
 }
 
 /* Clear filters button */

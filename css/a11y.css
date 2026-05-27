@@ -19,6 +19,21 @@
   z-index:70;
   transition: transform .16s ease, box-shadow .18s ease, background .16s ease;
 }
+
+body[data-zoom-assist="2"] .a11y-fab,
+body[data-zoom-assist="3"] .a11y-fab,
+body[data-zoom-assist="4"] .a11y-fab{
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+body[data-zoom-assist="3"] .a11y-fab,
+body[data-zoom-assist="4"] .a11y-fab{
+  width:48px;
+  height:48px;
+  border-radius:999px;
+  font-size:20px;
+}
 .a11y-fab:hover{
   transform:translateY(-2px) scale(1.02);
   box-shadow: var(--fab-shadow);

@@ -296,6 +296,7 @@
   background:rgba(255,255,255,0.04);
   color:var(--fg);
   min-height:var(--control-min-h);
+  font-size:max(16px, 1rem);
   box-sizing:border-box;
 }
 

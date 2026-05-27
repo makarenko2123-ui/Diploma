@@ -101,6 +101,9 @@ function applyState(state){
   body.classList.toggle('measure-all', !!state.measureGlobal);
   body.classList.toggle('focus-always', !!state.focusAlways);
   body.classList.toggle('reduce-motion', !!state.reduceMotion);
+  body.dataset.motionPref = state.reduceMotion
+    ? (state.userSetMotion ? 'user' : 'auto')
+    : 'none';
 
   body.dataset.aiMode = state.aiMode;
   body.dataset.zoomAssist = String(Number(state.aiLevelZoom ?? 0));
