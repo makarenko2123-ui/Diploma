@@ -423,13 +423,14 @@ function syncStickyOffsets(){
   if (!header) return;
 
   const height = Math.ceil(header.getBoundingClientRect().height);
-  document.documentElement.style.setProperty('--header-h', `${height}px`);
+  document.documentElement.style.setProperty('--header-offset', `${height}px`);
 }
 
 function createTickerController(track){
   if (!track) return null;
 
   const mediaQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const viewport = track.parentElement;
   let frameId = 0;
   let lastTs = 0;
   let offset = 0;
@@ -496,6 +497,11 @@ function createTickerController(track){
     frameId = requestAnimationFrame(tick);
   }
 
+  function requestRestart(){
+    stop();
+    requestAnimationFrame(start);
+  }
+
   function setItems(items){
     const headlines = Array.isArray(items) ? items.filter(Boolean) : [];
 
@@ -516,8 +522,7 @@ function createTickerController(track){
 
     track.innerHTML = htmlOnce + htmlOnce;
     offset = 0;
-    stop();
-    requestAnimationFrame(start);
+    requestRestart();
   }
 
   function resume({ restart = false } = {}){
@@ -558,10 +563,16 @@ function createTickerController(track){
   });
 
   observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+
+  if ('ResizeObserver' in window){
+    const resizeObserver = new ResizeObserver(() => requestRestart());
+    resizeObserver.observe(track);
+    if (viewport) resizeObserver.observe(viewport);
+  }
 
   window.addEventListener('resize', () => {
-    stop();
-    requestAnimationFrame(start);
+    requestRestart();
   }, { passive: true });
 
   document.addEventListener('visibilitychange', () => {
@@ -570,9 +581,10 @@ function createTickerController(track){
   });
 
   mediaQuery?.addEventListener?.('change', () => {
-    stop();
-    requestAnimationFrame(start);
+    requestRestart();
   });
+
+  document.fonts?.ready?.then?.(() => requestRestart());
 
   return { pause, resume, setItems };
 }

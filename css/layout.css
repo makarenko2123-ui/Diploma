@@ -1,5 +1,6 @@
 :root{
   --header-h: 70px;
+  --header-offset: 70px;
 }
 
 /* Header */
@@ -126,6 +127,7 @@
 @media (max-width:700px){
   :root{
     --header-h: 82px;
+    --header-offset: 82px;
   }
 
   .header-inner{

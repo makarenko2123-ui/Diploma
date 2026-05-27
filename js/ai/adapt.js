@@ -570,7 +570,6 @@ export function initAIAdapt({ a11y } = {}){
   applySystemPrefs();
 
   const ticker = document.getElementById('ticker-track');
-  const tickerWrap = document.querySelector('.ticker');
   const isTickerPausedByUser = () => ticker?.dataset?.userPaused === 'true';
   const pauseTicker = () => {
     if (!ticker) return;
@@ -582,11 +581,6 @@ export function initAIAdapt({ a11y } = {}){
     ticker.dataset.aiPaused = 'false';
     ticker.dispatchEvent(new CustomEvent('ticker:resume'));
   };
-
-  if (ticker && tickerWrap){
-    tickerWrap.addEventListener('mouseenter', pauseTicker);
-    tickerWrap.addEventListener('mouseleave', playTicker);
-  }
 
   document.addEventListener('visibilitychange', () => {
     if (!ticker) return;

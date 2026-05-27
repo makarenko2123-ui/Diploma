@@ -315,7 +315,7 @@
 /* Ticker */
 .ticker{
   position: sticky;
-  top: var(--header-h);
+  top: var(--header-offset, var(--header-h));
   z-index: 35;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
