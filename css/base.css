@@ -47,6 +47,18 @@
   --control-pad-x:var(--control-pad-x-base);
   --control-pad-y:var(--control-pad-y-base);
   --control-min-h:44px;
+  --target-min:44px;
+  --target-gap:10px;
+
+  --vv-width:100vw;
+  --vv-height:100dvh;
+  --vv-left:0px;
+  --vv-top:0px;
+  --vv-right:0px;
+  --vv-bottom:0px;
+  --vv-center-x:50vw;
+  --vv-center-y:50dvh;
+  --vv-dialog-height:88dvh;
 }
 
 *, *::before, *::after{
@@ -137,10 +149,27 @@ a{color:inherit;}
 
 /* Reduce motion (user or AI state) */
 body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after,
 body.reduce-motion{
   animation:none !important;
   transition:none !important;
   scroll-behavior:auto !important;
+}
+
+body.motion-paused *,
+body.motion-paused *::before,
+body.motion-paused *::after{
+  animation-play-state:paused !important;
+  transition:none !important;
+}
+
+body.motion-paused{
+  scroll-behavior:auto !important;
+}
+
+body.motion-paused :where([data-tilt], .tilt, [data-magnetic], .magnetic, [data-pointer-effect]){
+  transform:none !important;
 }
 
 html[data-motion-pref="user"],
@@ -177,6 +206,51 @@ body.a11y-hover-glow :where(a,button,.nav-pill,.ui-control):hover{
 /* AI: emphasize interactive elements */
 body.a11y-emphasize-click :where(a,button,.nav-pill,.ui-control,[role="button"]){
   box-shadow: 0 0 0 2px var(--glow-soft);
+}
+
+body[data-target-level="1"]{
+  --target-min:52px;
+  --target-gap:12px;
+}
+
+body[data-target-level="2"]{
+  --target-min:60px;
+  --target-gap:16px;
+}
+
+body[data-target-level="1"] :where(
+  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  select, textarea, summary, [role="button"], [role="switch"], .ui-control
+),
+body[data-target-level="2"] :where(
+  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  select, textarea, summary, [role="button"], [role="switch"], .ui-control
+){
+  min-width:var(--target-min) !important;
+  min-height:var(--target-min) !important;
+}
+
+body[data-target-level="1"] a[href],
+body[data-target-level="2"] a[href]{
+  display:inline-flex;
+  align-items:center;
+}
+
+body[data-target-level="1"] :where(
+  .card-tts-btn, .a11y-fab, .back-to-top, .icon-btn,
+  input[type="radio"], input[type="checkbox"]
+),
+body[data-target-level="2"] :where(
+  .card-tts-btn, .a11y-fab, .back-to-top, .icon-btn,
+  input[type="radio"], input[type="checkbox"]
+){
+  min-width:var(--target-min) !important;
+  min-height:var(--target-min) !important;
+}
+
+body[data-target-level="1"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions),
+body[data-target-level="2"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions){
+  gap:var(--target-gap);
 }
 
 /* =========================

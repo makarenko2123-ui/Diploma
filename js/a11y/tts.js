@@ -1,9 +1,3 @@
-function getTextFromSelector(selector){
-  const el = document.querySelector(selector);
-  if (!el) return '';
-  return (el.innerText || el.textContent || '').trim();
-}
-
 function getReadableText(el){
   return (el?.innerText || el?.textContent || '').trim();
 }
@@ -11,15 +5,10 @@ function getReadableText(el){
 export function extractReadableTextFromCard(cardEl){
   if (!cardEl) return '';
 
-  const title =
-    getReadableText(cardEl.querySelector('h3 a, h3, h2, .card-title, .news-title, [data-title]'));
-
-  const excerpt =
-    getReadableText(cardEl.querySelector('.card-body p.measure, p, .excerpt, .card-excerpt, [data-excerpt]'));
-
+  const title = getReadableText(cardEl.querySelector('h3 a, h3, h2, .card-title, .news-title, [data-title]'));
+  const excerpt = getReadableText(cardEl.querySelector('.card-body p.measure, p, .excerpt, .card-excerpt, [data-excerpt]'));
   const timeEl = cardEl.querySelector('time');
-  const date =
-    (getReadableText(timeEl) || timeEl?.getAttribute('datetime') || '').trim();
+  const date = getReadableText(timeEl) || timeEl?.getAttribute('datetime') || '';
 
   return [title, excerpt, date].filter(Boolean).join('. ');
 }
@@ -27,199 +16,255 @@ export function extractReadableTextFromCard(cardEl){
 function pickVoice(voices, preferredName){
   if (!voices.length) return null;
   if (preferredName){
-    const exact = voices.find((v) => v.name === preferredName);
+    const exact = voices.find((voice) => voice.name === preferredName);
     if (exact) return exact;
   }
-  return voices.find((v) => (v.lang || '').toLowerCase().startsWith('uk'))
-      || voices.find((v) => (v.lang || '').toLowerCase().includes('ua'))
-      || voices[0];
+
+  return voices.find((voice) => (voice.lang || '').toLowerCase().startsWith('uk'))
+    || voices.find((voice) => (voice.lang || '').toLowerCase().includes('ua'))
+    || voices[0];
 }
 
 export function initTTS(){
   const supported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
-
+  const synth = supported ? window.speechSynthesis : null;
   const voiceSelect = document.getElementById('tts-voice');
-  const rateRange = document.getElementById('tts-rate');
+  const panelRate = document.getElementById('tts-rate');
+  const playerRate = document.getElementById('tts-player-rate');
   const sampleBtn = document.getElementById('tts-sample');
-  const SETTINGS_KEY = 'a11y.settings.v3';
-
-  function readSavedRate(){
-    try{
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      const s = raw ? JSON.parse(raw) : null;
-      const n = Number(s?.ttsRate);
-      return Number.isFinite(n) ? n : 1;
-    }catch{
-      return 1;
-    }
-  }
+  const player = document.getElementById('tts-player');
+  const status = document.getElementById('tts-status');
+  const pauseBtn = document.getElementById('tts-pause');
+  const resumeBtn = document.getElementById('tts-resume');
+  const stopBtn = document.getElementById('tts-stop');
+  const live = document.getElementById('a11y-live');
+  const SETTINGS_KEYS = ['a11y.settings.v4', 'a11y.settings.v3'];
 
   let voices = [];
   let currentText = '';
-  let activeInterruptors = [];
-  const isSpeakingNow = () =>
-    supported && (window.speechSynthesis.speaking || window.speechSynthesis.pending || window.speechSynthesis.paused);
+  let interruptors = [];
+  let playbackState = 'idle';
+  let activeUtterance = null;
 
-  if (rateRange) rateRange.value = String(readSavedRate());
+  function readSavedRate(){
+    for (const key of SETTINGS_KEYS){
+      try{
+        const raw = localStorage.getItem(key);
+        const rate = Number(raw ? JSON.parse(raw)?.ttsRate : NaN);
+        if (Number.isFinite(rate)) return Math.max(0.7, Math.min(1.4, rate));
+      }catch{}
+    }
+    return 1;
+  }
+
+  function announce(text){
+    if (!live || !text) return;
+    live.textContent = '';
+    window.setTimeout(() => { live.textContent = text; }, 20);
+  }
+
+  function setRate(rate, { emit = false } = {}){
+    const next = Math.max(0.7, Math.min(1.4, Number(rate) || 1));
+    if (panelRate) panelRate.value = String(next);
+    if (playerRate) playerRate.value = String(next);
+
+    const valueText = `Швидкість ${Math.round(next * 100)} відсотків`;
+    panelRate?.setAttribute('aria-valuetext', valueText);
+    playerRate?.setAttribute('aria-valuetext', valueText);
+
+    if (emit){
+      document.dispatchEvent(new CustomEvent('tts:rate-change', { detail: { rate: next } }));
+    }
+  }
+
+  function updatePlayer(nextState, message){
+    playbackState = nextState;
+    document.body?.classList.toggle('tts-active', nextState !== 'idle');
+    if (player) player.hidden = nextState === 'idle';
+    if (status) status.textContent = message || (nextState === 'paused' ? 'Призупинено' : 'Відтворюється');
+    if (pauseBtn) pauseBtn.disabled = nextState !== 'speaking';
+    if (resumeBtn) resumeBtn.disabled = nextState !== 'paused';
+    if (stopBtn) stopBtn.disabled = nextState === 'idle';
+  }
+
+  function syncReadButtons(){
+    document.querySelectorAll('[data-tts-read]').forEach((button) => {
+      const selector = button.getAttribute('data-tts-source');
+      const card = selector ? document.querySelector(selector) : null;
+      const text = card ? extractReadableTextFromCard(card) : '';
+      button.setAttribute('aria-pressed', String(!!text && text === currentText && playbackState !== 'idle'));
+    });
+  }
 
   function loadVoices(){
     if (!supported) return;
-    voices = window.speechSynthesis.getVoices() || [];
+    voices = synth.getVoices() || [];
     if (!voiceSelect) return;
 
-    const prev = voiceSelect.value || '';
-
+    const previous = voiceSelect.value;
     voiceSelect.textContent = '';
-    for (const v of voices){
-      const opt = document.createElement('option');
-      opt.value = v.name || '';
-      opt.textContent = `${v.name || 'Voice'} (${v.lang || 'und'})`;
-      voiceSelect.appendChild(opt);
-    }
+    voices.forEach((voice) => {
+      const option = document.createElement('option');
+      option.value = voice.name || '';
+      option.textContent = `${voice.name || 'Voice'} (${voice.lang || 'und'})`;
+      voiceSelect.appendChild(option);
+    });
 
-    const preferred = prev || pickVoice(voices)?.name || '';
+    const preferred = previous || pickVoice(voices)?.name;
     if (preferred) voiceSelect.value = preferred;
   }
 
-  function ensureVoicesLoaded(){
-    if (!supported) return;
-    if (!voices.length) loadVoices();
+  function clearInterruptors(){
+    interruptors.forEach(({ target, type, handler, options }) => {
+      target.removeEventListener(type, handler, options);
+    });
+    interruptors = [];
   }
 
-  function clearSpeechSideEffects(){
-    for (const { target, type, handler } of activeInterruptors){
-      target.removeEventListener(type, handler);
-    }
-    activeInterruptors = [];
-  }
-
-  function stop(){
+  function stop({ announceStop = false } = {}){
     if (!supported) return false;
-    clearSpeechSideEffects();
+    clearInterruptors();
+    activeUtterance = null;
+    synth.cancel();
     currentText = '';
-    window.speechSynthesis.cancel();
+    updatePlayer('idle', 'Зупинено');
+    syncReadButtons();
+    if (announceStop) announce('Озвучення зупинено.');
+    return true;
+  }
+
+  function pause(){
+    if (!supported || playbackState !== 'speaking') return false;
+    synth.pause();
+    updatePlayer('paused', 'Призупинено');
+    announce('Озвучення призупинено.');
+    return true;
+  }
+
+  function resume(){
+    if (!supported || playbackState !== 'paused') return false;
+    synth.resume();
+    updatePlayer('speaking', 'Відтворюється');
+    announce('Озвучення продовжено.');
     return true;
   }
 
   function bindInterruptors(){
-    clearSpeechSideEffects();
-
+    clearInterruptors();
     const interrupt = () => {
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending || window.speechSynthesis.paused){
-        stop();
-      }
+      if (playbackState !== 'idle') stop({ announceStop: true });
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) interrupt();
     };
 
-    const keyboardScrollKeys = new Set([
-      'ArrowUp',
-      'ArrowDown',
-      'PageUp',
-      'PageDown',
-      'Home',
-      'End',
-      ' ',
-      'Spacebar'
-    ]);
-
-    const handleKeydown = (e) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (keyboardScrollKeys.has(e.key)) interrupt();
-    };
-
-    activeInterruptors = [
+    interruptors = [
       { target: window, type: 'scroll', handler: interrupt, options: { passive: true } },
       { target: window, type: 'wheel', handler: interrupt, options: { passive: true } },
       { target: window, type: 'touchmove', handler: interrupt, options: { passive: true } },
-      { target: window, type: 'keydown', handler: handleKeydown }
-    ];
+      { target: document, type: 'visibilitychange', handler: onVisibilityChange },
+      { target: document.querySelector('.news-dialog-body'), type: 'scroll', handler: interrupt, options: { passive: true } }
+    ].filter(({ target }) => target);
 
-    for (const { target, type, handler, options } of activeInterruptors){
+    interruptors.forEach(({ target, type, handler, options }) => {
       target.addEventListener(type, handler, options);
-    }
+    });
   }
 
   function speak(text){
-    const normalizedText = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!supported || !normalizedText) return false;
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!supported || !normalized) return false;
 
-    ensureVoicesLoaded();
+    if (!voices.length) loadVoices();
     stop();
-    currentText = normalizedText;
+    currentText = normalized;
 
-    const u = new SpeechSynthesisUtterance(normalizedText);
+    const utterance = new SpeechSynthesisUtterance(normalized);
+    const voice = pickVoice(voices, voiceSelect?.value);
+    if (voice) utterance.voice = voice;
+    utterance.lang = 'uk-UA';
+    utterance.rate = Number(panelRate?.value || playerRate?.value || 1);
+    activeUtterance = utterance;
+    utterance.onstart = () => {
+      if (activeUtterance !== utterance) return;
+      updatePlayer('speaking', 'Відтворюється');
+      syncReadButtons();
+    };
+    utterance.onend = () => {
+      if (activeUtterance !== utterance) return;
+      activeUtterance = null;
+      clearInterruptors();
+      currentText = '';
+      updatePlayer('idle', 'Завершено');
+      syncReadButtons();
+    };
+    utterance.onerror = () => {
+      if (activeUtterance !== utterance) return;
+      activeUtterance = null;
+      clearInterruptors();
+      currentText = '';
+      updatePlayer('idle', 'Не вдалося відтворити');
+      syncReadButtons();
+    };
 
-    const rate = rateRange ? Number(rateRange.value) : 1;
-    u.rate = Number.isFinite(rate) ? rate : 1;
-
-    const selected = voiceSelect ? voiceSelect.value : '';
-    const v = pickVoice(voices, selected);
-    if (v) u.voice = v;
-    u.lang = v?.lang || 'uk-UA';
     bindInterruptors();
-
-    u.onend = () => {
-      clearSpeechSideEffects();
-      currentText = '';
-    };
-    u.onerror = () => {
-      clearSpeechSideEffects();
-      currentText = '';
-    };
-
-    window.setTimeout(() => {
-      window.speechSynthesis.speak(u);
-    }, 0);
-
+    updatePlayer('speaking', 'Запуск...');
+    synth.speak(utterance);
+    announce('Озвучення розпочато.');
     return true;
   }
 
   function toggle(text){
-    const normalizedText = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!supported || !normalizedText) return false;
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!supported || !normalized) return false;
 
-    if (isSpeakingNow() && normalizedText === currentText) {
-      stop();
-      return true;
+    if (normalized === currentText && playbackState !== 'idle'){
+      return stop({ announceStop: true });
     }
-
-    return speak(normalizedText);
+    return speak(normalized);
   }
 
   document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tts-read]');
-    if (!btn) return;
+    const button = e.target.closest('[data-tts-read]');
+    if (!button) return;
 
-    const src = btn.getAttribute('data-tts-source');
-    const srcEl = src ? document.querySelector(src) : null;
-    const card = srcEl?.closest?.('[data-news-item], .card') || btn.closest('[data-news-item], .card');
-
-    const text = card
-      ? extractReadableTextFromCard(card)
-      : (srcEl ? getReadableText(srcEl) : '');
-
-    if (!text) return;
-    toggle(text);
+    const selector = button.getAttribute('data-tts-source');
+    const source = selector ? document.querySelector(selector) : null;
+    const card = source?.closest?.('[data-news-item], .card') || button.closest('[data-news-item], .card');
+    const text = card ? extractReadableTextFromCard(card) : getReadableText(source);
+    if (text) toggle(text);
   });
 
   sampleBtn?.addEventListener('click', () => {
-    speak('Привіт! Це приклад озвучення. Швидкість і голос можна змінити в налаштуваннях.');
+    speak('Привіт! Це приклад озвучення. Швидкість і голос можна змінити в налаштуваннях доступності.');
   });
+  pauseBtn?.addEventListener('click', pause);
+  resumeBtn?.addEventListener('click', resume);
+  stopBtn?.addEventListener('click', () => stop({ announceStop: true }));
+  panelRate?.addEventListener('input', () => setRate(panelRate.value));
+  playerRate?.addEventListener('input', () => setRate(playerRate.value, { emit: true }));
 
   if (supported){
+    setRate(readSavedRate());
     loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
+    synth.addEventListener?.('voiceschanged', loadVoices);
   }else{
     if (voiceSelect) voiceSelect.innerHTML = '<option>Недоступно у цьому браузері</option>';
-    if (sampleBtn) sampleBtn.disabled = true;
+    [sampleBtn, pauseBtn, resumeBtn, stopBtn].forEach((button) => {
+      if (button) button.disabled = true;
+    });
   }
+
+  updatePlayer('idle', supported ? 'Зупинено' : 'Недоступно');
 
   return {
     supported,
     speak,
     stop,
+    pause,
+    resume,
     toggle,
-    isSpeaking: isSpeakingNow,
-    getTextFromSelector,
+    isSpeaking: () => playbackState !== 'idle',
     extractReadableTextFromCard
   };
 }

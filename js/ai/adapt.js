@@ -3,784 +3,711 @@ function mode(){
 }
 
 function showAIToast(text, timeoutMs = 4500){
-  const el = document.getElementById('ai-indicator');
-  if (!el) return;
+  const toast = document.getElementById('ai-indicator');
+  const live = document.getElementById('a11y-live');
+  if (!text) return;
 
-  const textEl = el.querySelector('.ai-text');
-  if (textEl) textEl.textContent = text;
+  if (toast){
+    const textEl = toast.querySelector('.ai-text');
+    if (textEl) textEl.textContent = text;
+    toast.hidden = false;
+    toast.classList.add('show');
 
-  el.hidden = false;
-  el.classList.add('show');
+    window.clearTimeout(showAIToast._timer);
+    showAIToast._timer = window.setTimeout(() => {
+      toast.classList.remove('show');
+      window.setTimeout(() => { toast.hidden = true; }, 250);
+    }, timeoutMs);
+  }
 
-  window.clearTimeout(showAIToast._t);
-  showAIToast._t = window.setTimeout(() => {
-    el.classList.remove('show');
-    setTimeout(() => { el.hidden = true; }, 250);
-  }, timeoutMs);
+  if (live){
+    live.textContent = '';
+    window.setTimeout(() => { live.textContent = text; }, 20);
+  }
 }
 
-function levelFromMisses(misses){
-  if (misses >= 10) return 4;
-  if (misses >= 7) return 3;
-  if (misses >= 4) return 2;
-  if (misses >= 2) return 1;
-  return 0;
-}
+const EMPTY_AUTO = {
+  theme: null,
+  textScale: null,
+  lineHeight: null,
+  letterSpaceEm: null,
+  columnWidth: null,
+  underlineLinks: null,
+  thickFocus: null,
+  reduceMotion: null,
+  readingMode: null,
+  largeTargetLevel: 0,
+  declutter: null,
+  reduceTransparency: null,
+  zoomLevel: 0,
+  simplifyLayout: false,
+  oneColumn: false
+};
 
 export function initAIAdapt({ a11y } = {}){
-  const SUBSCRIBE_FORM_ID = 'subscribe-form';
-  const INTERACTIVE_HIT_SEL =
-    'button, a[href], input, select, textarea, label, summary, [role="button"], .backdrop';
-  const MISS_SCOPE_SEL = [
-    '.site-header',
-    '.mobile-menu',
-    '.hero-card',
-    '.hero-actions',
-    '.news-focus',
-    '.news-tools',
-    '.news-list',
-    '.subscribe-panel',
-    '.a11y-panel',
-    '.panel-actions',
-    '.panel-body',
-    '.news-dialog',
-    '.trending',
-    '.quick-actions',
-    '.card'
-  ].join(', ');
+  const INTERACTIVE_SELECTOR = [
+    'button',
+    'a[href]',
+    'input',
+    'select',
+    'textarea',
+    'label',
+    'summary',
+    '[role="button"]',
+    '[role="switch"]',
+    '[tabindex]:not([tabindex="-1"])',
+    '[data-ai-click-target]',
+    '.backdrop'
+  ].join(',');
+  const media = {
+    motion: window.matchMedia?.('(prefers-reduced-motion: reduce)'),
+    contrast: window.matchMedia?.('(prefers-contrast: more)'),
+    forced: window.matchMedia?.('(forced-colors: active)'),
+    transparency: window.matchMedia?.('(prefers-reduced-transparency: reduce)'),
+    coarse: window.matchMedia?.('(pointer: coarse)')
+  };
+  const sources = {
+    system: {},
+    zoom: {},
+    misses: {},
+    keyboard: {},
+    reading: {},
+    scroll: {}
+  };
 
-  let lastZoomLevel = 0;
-  let lastSelToastAt = 0;
-  let lastMissLevel = 0;
   let missTimes = [];
-  let missDecayTimer = 0;
-  let activeReadMs = 0;
-  let readingAnchorAt = null;
-  let longReadFired = false;
-  let readAssistFromSelection = false;
-  let readAssistFromLongRead = false;
-  let sawTab = false;
+  let missTimer = 0;
+  let lastMissInput = { x: 0, y: 0, time: 0, source: '' };
   let tabCount = 0;
-  let lastActivate = performance.now();
-  let lastGoodHitAt = 0;
+  let sharpScrollTimes = [];
+  let lastScroll = { y: window.scrollY || 0, time: performance.now() };
+  let wheelScroll = { delta: 0, direction: 0, startedAt: 0, lastAt: 0 };
+  let lastSharpInput = { direction: 0, time: 0 };
+  let motionPauseTimer = 0;
+  let zoomMonitorTimer = 0;
+  let zoomMonitorStopTimer = 0;
+  let articleTimer = 0;
+  let articleEl = null;
+  let articleScrollEl = null;
+  let lastZoomLevel = 0;
   let lastMode = null;
-  const baseLayoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
-  const baseVisualWidth = Math.max(window.visualViewport?.width || window.innerWidth || baseLayoutWidth, 1);
-  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-  const hoverCapable = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
-  const missWindowMs = coarsePointer ? 45000 : 30000;
-  let lastPointerType = coarsePointer ? 'touch' : 'mouse';
+  let autoSuppressed = false;
+  let baseDpr = window.devicePixelRatio || 1;
+  let baseVisualScale = window.visualViewport?.scale || 1;
+  let gestureZoomFactor = 1;
+  let lastZoomFingerprint = '';
+  const decisionCache = new Map();
 
-  const INTERACTIVE_SEL =
-    'button, a[href], input, select, textarea, label, [role="button"], .backdrop';
-
-  function currentState(){
-    return a11y?.getState?.() || {};
+  function isSmart(){
+    return mode() === 'auto';
   }
 
-  function currentMode(){
-    return mode();
+  function isEnabled(){
+    return mode() !== 'off';
   }
 
-  function canAutoAdjustFocus(){
-    const st = currentState();
-    return !st.userSetFocus && !st.thickFocus;
+  function maxNumber(key){
+    const values = Object.values(sources)
+      .map((source) => Number(source[key]))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return values.length ? Math.max(...values) : null;
   }
 
-  function clearMissDecayTimer(){
-    if (missDecayTimer){
-      window.clearTimeout(missDecayTimer);
-      missDecayTimer = 0;
-    }
+  function anyTrue(key){
+    return Object.values(sources).some((source) => source[key] === true);
   }
 
-  function pruneMisses(now = performance.now()){
-    missTimes = missTimes.filter((x) => (now - x) <= missWindowMs);
-    return missTimes.length;
+  function combineSources(){
+    return {
+      ...EMPTY_AUTO,
+      theme: sources.system.theme || null,
+      textScale: maxNumber('textScale'),
+      lineHeight: maxNumber('lineHeight'),
+      letterSpaceEm: maxNumber('letterSpaceEm'),
+      columnWidth: sources.reading.columnWidth || sources.zoom.columnWidth || null,
+      underlineLinks: anyTrue('underlineLinks') ? true : null,
+      thickFocus: anyTrue('thickFocus') ? true : null,
+      reduceMotion: anyTrue('reduceMotion') ? true : null,
+      readingMode: anyTrue('readingMode') ? true : null,
+      largeTargetLevel: Math.max(0, ...Object.values(sources).map((source) => Number(source.largeTargetLevel || 0))),
+      declutter: anyTrue('declutter') ? true : null,
+      reduceTransparency: anyTrue('reduceTransparency') ? true : null,
+      zoomLevel: Number(sources.zoom.zoomLevel || 0),
+      simplifyLayout: anyTrue('simplifyLayout'),
+      oneColumn: anyTrue('oneColumn')
+    };
   }
 
-  function missLevelFromCount(count){
-    if (coarsePointer){
-      if (count >= 8) return 4;
-      if (count >= 6) return 3;
-      if (count >= 4) return 2;
-      if (count >= 2) return 1;
-      return 0;
-    }
-    return levelFromMisses(count);
+  function syncAutoState(){
+    a11y?.replaceAIState?.(combineSources());
   }
 
-  function enableReadingMode(){
-    document.body.classList.add('a11y-reading-ruler');
+  function recordDecision(key, message, { toast = true } = {}){
+    if (!message || decisionCache.get(key) === message) return;
+    decisionCache.set(key, message);
+    a11y?.recordAutoDecision?.(message);
+    if (toast) showAIToast(`AI: ${message}`, 5200);
   }
 
-  function enableGentleReadingMode(){
-    document.body.classList.add('a11y-reading-ruler');
-  }
-
-  function disableReadingMode(){
-    document.body.classList.remove('a11y-reading-ruler', 'a11y-declutter');
-  }
-
-  function resetLongReadTracking(){
-    activeReadMs = 0;
-    readingAnchorAt = document.visibilityState === 'visible' ? performance.now() : null;
-    longReadFired = false;
-  }
-
-  function pauseLongReadTracking(){
-    if (readingAnchorAt === null) return;
-    activeReadMs += performance.now() - readingAnchorAt;
-    readingAnchorAt = null;
-  }
-
-  function resumeLongReadTracking(){
-    if (readingAnchorAt !== null || document.visibilityState !== 'visible') return;
-    readingAnchorAt = performance.now();
-  }
-
-  function getLongReadElapsed(){
-    if (readingAnchorAt === null) return activeReadMs;
-    return activeReadMs + (performance.now() - readingAnchorAt);
-  }
-
-  function syncReadAssist({ announceText = '' } = {}){
-    const active = readAssistFromSelection || readAssistFromLongRead;
-    const st = currentState();
-
-    if (!active){
-      disableReadingMode();
-      if (Number(st.aiLevelRead ?? 0) !== 0){
-        a11y?.setAILevels?.({ aiLevelRead: 0 });
-      }
-      return;
-    }
-
-    if (currentMode() === 'auto'){
-      enableReadingMode();
-      const next = Math.max(Number(st.aiLevelRead ?? 0), 2);
-      if (next !== Number(st.aiLevelRead ?? 0)){
-        a11y?.setAILevels?.({ aiLevelRead: next });
-      }
-    }else if (currentMode() === 'gentle'){
-      enableGentleReadingMode();
-      if (Number(st.aiLevelRead ?? 0) !== 0){
-        a11y?.setAILevels?.({ aiLevelRead: 0 });
-      }
-    }else{
-      disableReadingMode();
-      if (Number(st.aiLevelRead ?? 0) !== 0){
-        a11y?.setAILevels?.({ aiLevelRead: 0 });
-      }
-      return;
-    }
-
-    if (announceText){
-      showAIToast(announceText, currentMode() === 'auto' ? 6000 : 5000);
-    }
-  }
-
-  function scheduleMissDecay(){
-    clearMissDecayTimer();
-    const missCount = pruneMisses();
-    if (!missCount) return;
-
-    const oldest = missTimes[0];
-    const now = performance.now();
-    const delay = Math.max(250, missWindowMs - (now - oldest) + 20);
-    missDecayTimer = window.setTimeout(() => {
-      syncMissAssist({ announce: false });
-    }, delay);
-  }
-
-  function syncMissAssist({ announce = true } = {}){
-    const st = currentState();
-    const missCount = pruneMisses();
-    const targetLevel = missLevelFromCount(missCount);
-
-    if (currentMode() === 'off'){
-      if (Number(st.aiLevelMiss ?? 0) !== 0){
-        a11y?.setAILevels?.({ aiLevelMiss: 0 });
-      }
-      document.body.classList.remove('a11y-emphasize-click', 'a11y-hover-glow');
-      if (canAutoAdjustFocus()){
-        document.body.classList.remove('focus-thick');
-      }
-      lastMissLevel = 0;
-      clearMissDecayTimer();
-      return 0;
-    }
-
-    if (currentMode() === 'gentle'){
-      if (hoverCapable){
-        document.body.classList.toggle('a11y-hover-glow', missCount >= 3);
-      }
-      document.body.classList.toggle('a11y-emphasize-click', missCount >= 3);
-      if (canAutoAdjustFocus()){
-        document.body.classList.toggle('focus-thick', missCount >= 5);
-      }
-      if (announce && missCount === 3 && lastMissLevel < 2){
-        showAIToast('AI: підсвітив елементи, бо схоже на кілька промахів поспіль.', 5000);
-      }
-      lastMissLevel = targetLevel;
-      scheduleMissDecay();
-      return targetLevel;
-    }
-
-    if (Number(st.aiLevelMiss ?? 0) !== targetLevel){
-      a11y?.setAILevels?.({ aiLevelMiss: targetLevel });
-    }
-
-    document.body.classList.toggle('a11y-emphasize-click', targetLevel >= 2);
-    if (hoverCapable){
-      document.body.classList.toggle('a11y-hover-glow', targetLevel >= 2);
-    }
-    if (canAutoAdjustFocus()){
-      document.body.classList.toggle('focus-thick', missCount >= 6);
-    }
-
-    if (announce && targetLevel > lastMissLevel && targetLevel >= 2){
-      showAIToast(`AI: зафіксував кілька промахів (${missCount}/${Math.round(missWindowMs / 1000)}с) і м'яко підсилив інтерфейс.`, 5200);
-    }
-
-    lastMissLevel = targetLevel;
-    scheduleMissDecay();
-    return targetLevel;
-  }
-
-  function settleMissesAfterSuccess(){
-    if (!missTimes.length) return;
-
-    const now = performance.now();
-    if (now - lastGoodHitAt < 700) return;
-    lastGoodHitAt = now;
-
-    pruneMisses(now);
-    if (!missTimes.length){
-      syncMissAssist({ announce: false });
-      return;
-    }
-
-    missTimes.shift();
-    syncMissAssist({ announce: false });
-  }
-
-  function resolveMissScope(target){
-    return target?.closest?.(MISS_SCOPE_SEL)
-      || document.querySelector('#main')
-      || document.body;
-  }
-
-  function getMissRadius(){
-    if (lastPointerType === 'touch' || lastPointerType === 'pen') return 30;
-    return coarsePointer ? 28 : 22;
-  }
-
-  function applySystemPrefs(){
-    const st = currentState();
-
-    try{
-      const more = window.matchMedia?.('(prefers-contrast: more)').matches;
-      const forced = window.matchMedia?.('(forced-colors: active)').matches;
-      if (forced && !st.userSetTheme){
-        a11y?.setAIState?.({ theme: 'high-contrast' });
-        if (!st.userSetLinks) a11y?.setAIState?.({ underlineLinks: true });
-        showAIToast('AI: увімкнув високий контраст за системними налаштуваннями.', 5200);
-      }else if (more){
-        const patch = {};
-        if (!st.userSetLinks) patch.underlineLinks = true;
-        if (canAutoAdjustFocus()) patch.thickFocus = true;
-        if (Object.keys(patch).length){
-          a11y?.setAIState?.(patch);
-        }
-      }
-    }catch{}
-
-    try{
-      const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-      if (dark && mode() === 'auto' && !st.userSetTheme){
-        a11y?.setAIState?.({ theme: 'dark' });
-      }
-    }catch{}
-  }
-
-  function ensureInlineError(el, msg){
-    if (!el || !msg) return;
-
-    const id = el.id || (el.id = `fld_${Math.random().toString(36).slice(2, 9)}`);
-    const errId = `${id}__err`;
-    let err = document.getElementById(errId);
-
-    if (!err){
-      err = document.createElement('div');
-      err.id = errId;
-      err.className = 'a11y-field-error';
-      err.setAttribute('role', 'status');
-      err.setAttribute('aria-live', 'polite');
-
-      const wrap = el.closest?.('.field, .form-row, .input-row, label') || el.parentElement;
-      if (wrap?.tagName === 'LABEL' && wrap.parentElement){
-        wrap.insertAdjacentElement('afterend', err);
-      }else{
-        const host = wrap || el.parentElement || el;
-        host.appendChild(err);
-      }
-    }
-
-    err.textContent = msg;
-
-    const desc = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
-    if (!desc.includes(errId)){
-      desc.push(errId);
-      el.setAttribute('aria-describedby', desc.join(' '));
-    }
-
-    el.setAttribute('aria-invalid', 'true');
-  }
-
-  function messageFromValidity(el){
-    const v = el?.validity;
-    if (!v) return 'Перевір це поле.';
-    if (v.valueMissing) return 'Це поле обов\'язкове.';
-    if (v.typeMismatch){
-      if (el.type === 'email') return 'Введи коректну електронну пошту.';
-      if (el.type === 'url') return 'Введи коректне посилання.';
-      return 'Неправильний формат.';
-    }
-    if (v.tooShort) return `Занадто коротко (мінімум ${el.minLength}).`;
-    if (v.tooLong) return `Занадто довго (максимум ${el.maxLength}).`;
-    if (v.patternMismatch) return 'Формат не відповідає вимогам.';
-    if (v.rangeUnderflow) return `Значення має бути не менше ${el.min}.`;
-    if (v.rangeOverflow) return `Значення має бути не більше ${el.max}.`;
-    if (v.badInput) return 'Неправильне значення.';
-    return el.validationMessage || 'Перевір це поле.';
-  }
-
-  function focusFirstInvalid(form){
-    const first = form.querySelector(':invalid');
-    if (!first) return false;
-
-    try { first.focus({ preventScroll: true }); } catch { try { first.focus(); } catch {} }
-    try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch {}
-
-    const msg = messageFromValidity(first);
-    ensureInlineError(first, msg);
-    if (canAutoAdjustFocus()){
-      document.body.classList.add('focus-thick');
-    }
-    showAIToast(`AI: помилка у формі - ${msg}`, 5200);
+  function setSource(name, patch, decision = '', options = {}){
+    const next = { ...(patch || {}) };
+    if (JSON.stringify(sources[name]) === JSON.stringify(next)) return false;
+    sources[name] = next;
+    syncAutoState();
+    if (decision) recordDecision(name, decision, options);
     return true;
   }
 
-  function srgbToLin(c){
-    c /= 255;
-    return c <= 0.04045 ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4);
+  function clearSources(){
+    Object.keys(sources).forEach((name) => {
+      sources[name] = {};
+    });
+    a11y?.replaceAIState?.({ ...EMPTY_AUTO });
   }
 
-  function relLuminance(rgb){
-    const [r, g, b] = rgb.map(srgbToLin);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  function syncVisualViewport(){
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const width = viewport?.width || window.innerWidth;
+    const height = viewport?.height || window.innerHeight;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const right = (viewport?.scale || 1) > 1.01
+      ? Math.max(0, window.innerWidth - width - left)
+      : 0;
+    const bottom = Math.max(0, window.innerHeight - height - top);
+
+    root.style.setProperty('--vv-width', `${Math.round(width)}px`);
+    root.style.setProperty('--vv-height', `${Math.round(height)}px`);
+    root.style.setProperty('--vv-left', `${Math.round(left)}px`);
+    root.style.setProperty('--vv-top', `${Math.round(top)}px`);
+    root.style.setProperty('--vv-right', `${Math.round(right)}px`);
+    root.style.setProperty('--vv-bottom', `${Math.round(bottom)}px`);
+    root.style.setProperty('--vv-center-x', `${Math.round(left + (width / 2))}px`);
+    root.style.setProperty('--vv-center-y', `${Math.round(top + (height / 2))}px`);
+    root.style.setProperty('--vv-dialog-height', `${Math.round(height * 0.88)}px`);
   }
-
-  function parseRgb(str){
-    const m = str.match(/rgba?\(([^)]+)\)/i);
-    if (!m) return null;
-    const parts = m[1].split(',').map((x) => parseFloat(x.trim()));
-    return parts.length >= 3 ? parts.slice(0, 3) : null;
-  }
-
-  function contrastRatio(fgRgb, bgRgb){
-    const l1 = relLuminance(fgRgb);
-    const l2 = relLuminance(bgRgb);
-    const hi = Math.max(l1, l2);
-    const lo = Math.min(l1, l2);
-    return (hi + 0.05) / (lo + 0.05);
-  }
-
-  function resolveOpaqueBackground(el){
-    let node = el;
-    while (node){
-      const bg = getComputedStyle(node).backgroundColor;
-      if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') return parseRgb(bg);
-      node = node.parentElement;
-    }
-    return parseRgb(getComputedStyle(document.body).backgroundColor);
-  }
-
-  function checkContrastAndAdapt(){
-    if (mode() !== 'auto') return;
-
-    const st = currentState();
-    if (st.userSetTheme) return;
-
-    const nodes = Array.from(document.querySelectorAll(
-      '.site-header a, .site-header button, #main a, #main button, .nav-pill, .btn-outline, .btn-primary'
-    ))
-      .filter((el) => el.getClientRects().length)
-      .slice(0, 50);
-
-    let worst = Infinity;
-
-    for (const el of nodes){
-      const cs = getComputedStyle(el);
-      const fg = parseRgb(cs.color);
-      const bg = resolveOpaqueBackground(el);
-      if (!fg || !bg) continue;
-
-      worst = Math.min(worst, contrastRatio(fg, bg));
-    }
-
-    void worst;
-  }
-
-  const baseDPR = window.devicePixelRatio || 1;
-  const baseVV = window.visualViewport?.scale || 1;
 
   function getZoomFactor(){
     const dpr = window.devicePixelRatio || 1;
-    const vv = window.visualViewport?.scale || 1;
-    const layoutWidth = Math.max(document.documentElement?.clientWidth || window.innerWidth || 1, 1);
-    const visualWidth = Math.max(window.visualViewport?.width || window.innerWidth || layoutWidth, 1);
-    const layoutFactor = baseLayoutWidth / layoutWidth;
-    const visualFactor = baseVisualWidth / visualWidth;
+    const viewport = window.visualViewport;
+    const visualScale = viewport?.scale || 1;
 
-    if (coarsePointer){
-      if (window.visualViewport){
-        return Math.max(1, vv / baseVV);
-      }
-      return Math.max(1, layoutFactor);
-    }
-
-    return Math.max(dpr / baseDPR, vv / baseVV, layoutFactor, visualFactor);
+    return Math.max(
+      1,
+      dpr / baseDpr,
+      visualScale / baseVisualScale,
+      gestureZoomFactor
+    );
   }
 
-  function levelFromZoomFactor(z){
-    if (z >= 1.6) return 4;
-    if (z >= 1.35) return 3;
-    if (z >= 1.15) return 2;
-    if (z >= 1.05) return 1;
+  function zoomLevelFromFactor(factor){
+    if (factor >= 1.75) return 3;
+    if (factor >= 1.35) return 2;
+    if (factor >= 1.12) return 1;
     return 0;
   }
 
+  function patchForZoom(level){
+    if (level >= 3){
+      return {
+        zoomLevel: 3,
+        textScale: 120,
+        lineHeight: 1.85,
+        columnWidth: 'narrow',
+        largeTargetLevel: 2,
+        simplifyLayout: true,
+        oneColumn: true
+      };
+    }
+    if (level === 2){
+      return {
+        zoomLevel: 2,
+        textScale: 115,
+        lineHeight: 1.75,
+        columnWidth: 'narrow',
+        largeTargetLevel: 1,
+        simplifyLayout: true
+      };
+    }
+    if (level === 1){
+      return {
+        zoomLevel: 1,
+        textScale: 105,
+        columnWidth: 'narrow',
+        largeTargetLevel: 1
+      };
+    }
+    return {};
+  }
+
   function handleZoomChange(){
-    if (mode() !== 'auto') return;
+    syncVisualViewport();
+    if (!isEnabled() || autoSuppressed) return;
 
-    const z = getZoomFactor();
-    const lvl = levelFromZoomFactor(z);
-    if (lvl === lastZoomLevel) return;
+    const factor = getZoomFactor();
+    const level = zoomLevelFromFactor(factor);
+    if (level === lastZoomLevel && Number(sources.zoom.zoomLevel || 0) === level) return;
 
-    const prev = lastZoomLevel;
-    lastZoomLevel = lvl;
-    a11y?.setAILevels?.({ aiLevelZoom: lvl });
+    lastZoomLevel = level;
+    const message = level
+      ? `адаптовано інтерфейс до масштабу ${Math.round(factor * 100)}%.`
+      : 'повернуто стандартне компонування після зменшення масштабу.';
 
-    if (lvl > prev){
-      showAIToast(`AI: zoom x${z.toFixed(2)} - адаптував макет і розміри елементів.`, 5200);
+    setSource('zoom', patchForZoom(level), message, { toast: level > 0 });
+  }
+
+  function getZoomFingerprint(){
+    const viewport = window.visualViewport;
+    return [
+      window.devicePixelRatio || 1,
+      document.documentElement.clientWidth || window.innerWidth || 1,
+      viewport?.scale || 1,
+      viewport?.width || window.innerWidth || 1,
+      viewport?.height || window.innerHeight || 1,
+      gestureZoomFactor
+    ].join('|');
+  }
+
+  function pollZoom(){
+    const fingerprint = getZoomFingerprint();
+    if (fingerprint === lastZoomFingerprint) return;
+    lastZoomFingerprint = fingerprint;
+    handleZoomChange();
+  }
+
+  function startZoomMonitor(durationMs = 2200){
+    pollZoom();
+    if (!zoomMonitorTimer){
+      zoomMonitorTimer = window.setInterval(pollZoom, 120);
     }
+
+    window.clearTimeout(zoomMonitorStopTimer);
+    zoomMonitorStopTimer = window.setTimeout(() => {
+      window.clearInterval(zoomMonitorTimer);
+      zoomMonitorTimer = 0;
+      pollZoom();
+    }, durationMs);
   }
 
-  function pushMiss(){
-    const t = performance.now();
-    missTimes.push(t);
-    return pruneMisses(t);
+  function updateGestureZoom(deltaY){
+    const magnitude = Math.min(120, Math.abs(Number(deltaY) || 0));
+    if (!magnitude) return;
+
+    const step = 1 + Math.min(0.18, magnitude * 0.002);
+    gestureZoomFactor = deltaY < 0
+      ? Math.min(4, gestureZoomFactor * step)
+      : Math.max(1, gestureZoomFactor / step);
+
+    startZoomMonitor();
   }
 
-  function nearestInteractiveWithin(x, y, root, maxDist = 28){
-    const candidates = Array.from(root.querySelectorAll(INTERACTIVE_SEL))
-      .filter((el) => !el.hasAttribute('disabled') && el.getClientRects().length);
-
-    let best = null;
-    let bestD = Infinity;
-
-    for (const el of candidates){
-      const r = el.getBoundingClientRect();
-      const dx = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
-      const dy = y < r.top ? r.top - y : (y > r.bottom ? y - r.bottom : 0);
-      const d = Math.hypot(dx, dy);
-      if (d < bestD){
-        bestD = d;
-        best = el;
-      }
-    }
-
-    return bestD <= maxDist ? { el: best, dist: bestD } : null;
+  function resetZoomBaseline(){
+    baseDpr = window.devicePixelRatio || 1;
+    baseVisualScale = window.visualViewport?.scale || 1;
+    gestureZoomFactor = 1;
+    lastZoomFingerprint = '';
+    lastZoomLevel = 0;
+    setSource('zoom', {});
+    syncVisualViewport();
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    if (!e.isPrimary) return;
-    lastPointerType = e.pointerType || lastPointerType;
-  }, true);
-
-  document.addEventListener('click', (e) => {
-    if (currentMode() === 'off') return;
-    if (e.defaultPrevented || e.detail === 0) return;
-
-    const hit = e.target.closest(INTERACTIVE_HIT_SEL);
-    if (hit){
-      settleMissesAfterSuccess();
+  function applySystemPrefs({ announce = false } = {}){
+    if (!isEnabled() || autoSuppressed){
+      setSource('system', {});
       return;
     }
 
-    const scope = resolveMissScope(e.target);
-    const near = nearestInteractiveWithin(e.clientX, e.clientY, scope, getMissRadius());
-    if (!near) return;
+    const forced = !!media.forced?.matches;
+    const contrast = !!media.contrast?.matches;
+    const motion = !!media.motion?.matches;
+    const transparency = !!media.transparency?.matches;
+    const coarse = !!media.coarse?.matches;
+    const patch = {
+      theme: forced ? 'high-contrast' : null,
+      underlineLinks: forced || contrast,
+      thickFocus: forced || contrast,
+      reduceMotion: motion,
+      reduceTransparency: transparency || forced,
+      declutter: transparency,
+      largeTargetLevel: coarse ? 1 : 0
+    };
+    const hasAdjustments = Object.values(patch).some((value) => value === true || value === 'high-contrast' || value === 1);
 
-    pushMiss();
-    syncMissAssist({ announce: true });
-  }, true);
+    setSource(
+      'system',
+      patch,
+      hasAdjustments ? 'враховано системні налаштування доступності.' : '',
+      { toast: announce && hasAdjustments }
+    );
+  }
 
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('#a11y-reset');
-    if (!btn) return;
-    readAssistFromSelection = false;
-    readAssistFromLongRead = false;
-    disableReadingMode();
-    resetLongReadTracking();
-    syncReadAssist();
-  }, true);
+  function pruneMisses(now = performance.now()){
+    missTimes = missTimes.filter((time) => now - time <= 45000);
+    return missTimes.length;
+  }
 
-  document.addEventListener('submit', (e) => {
-    if (mode() !== 'auto') return;
-    const form = e.target;
-    if (!(form instanceof HTMLFormElement)) return;
-    if (form.id === SUBSCRIBE_FORM_ID) return;
-    if (!form.checkValidity()){
-      e.preventDefault();
-      focusFirstInvalid(form);
-    }
-  }, true);
+  function scheduleMissPrune(){
+    window.clearTimeout(missTimer);
+    missTimer = 0;
+    if (!missTimes.length) return;
 
-  document.addEventListener('invalid', (e) => {
-    if (mode() !== 'auto') return;
-    e.preventDefault();
-    const el = e.target;
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
-    if (el.form?.id === SUBSCRIBE_FORM_ID) return;
-    ensureInlineError(el, messageFromValidity(el));
-  }, true);
+    const delay = Math.max(100, 45020 - (performance.now() - missTimes[0]));
+    missTimer = window.setTimeout(syncMissAssist, delay);
+  }
 
-  document.addEventListener('input', (e) => {
-    const el = e.target;
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
-    if (el.form?.id === SUBSCRIBE_FORM_ID) return;
-    if (!el.checkValidity()) return;
+  function nearestInteractiveWithin(x, y, radius = 38){
+    const candidates = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
+      .filter((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0);
+    let nearest = null;
+    let distance = Infinity;
 
-    el.removeAttribute('aria-invalid');
-    const errId = (el.getAttribute('aria-describedby') || '').split(/\s+/).find((x) => x.endsWith('__err'));
-    if (!errId) return;
-
-    document.getElementById(errId)?.remove();
-    const desc = (el.getAttribute('aria-describedby') || '')
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter((x) => x !== errId);
-
-    if (desc.length) el.setAttribute('aria-describedby', desc.join(' '));
-    else el.removeAttribute('aria-describedby');
-  }, true);
-
-  window.addEventListener('keydown', (e) => {
-    if (mode() === 'off') return;
-    if (e.key === 'Tab' && !sawTab){
-      sawTab = true;
-      if (canAutoAdjustFocus()){
-        document.body.classList.add('focus-thick');
+    candidates.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      const dx = x < rect.left ? rect.left - x : (x > rect.right ? x - rect.right : 0);
+      const dy = y < rect.top ? rect.top - y : (y > rect.bottom ? y - rect.bottom : 0);
+      const current = Math.hypot(dx, dy);
+      if (current < distance){
+        distance = current;
+        nearest = el;
       }
-      showAIToast('AI: підсилив фокус для керування клавіатурою.');
-    }
-  }, { passive: true });
+    });
 
-  document.addEventListener('keydown', (e) => {
-    if (mode() === 'off') return;
+    return distance <= radius ? { el: nearest, distance } : null;
+  }
 
-    if (e.key === 'Enter' || e.key === ' ') lastActivate = performance.now();
-    if (e.key !== 'Tab') return;
-
-    tabCount++;
-    if (mode() === 'auto' && tabCount >= 8 && (performance.now() - lastActivate) > 6000){
-      document.body.classList.add('a11y-hover-glow', 'a11y-emphasize-click');
-      if (canAutoAdjustFocus()){
-        document.body.classList.add('focus-thick');
-      }
-      showAIToast('AI: підсилив навігацію для клавіатури.', 5000);
-      tabCount = 0;
-    }
-  }, { passive: true });
-
-  window.addEventListener('scroll', () => {
-    if (mode() === 'off') return;
-
-    const y = window.scrollY || document.documentElement.scrollTop;
-    if (y < 200){
-      if (readAssistFromLongRead){
-        readAssistFromLongRead = false;
-        syncReadAssist();
-      }
-      resetLongReadTracking();
-    }else if (!longReadFired){
-      resumeLongReadTracking();
-      const elapsed = getLongReadElapsed();
-      if (elapsed > 45000){
-        longReadFired = true;
-
-        if (mode() === 'auto'){
-          readAssistFromLongRead = true;
-          syncReadAssist();
-          showAIToast('AI: увімкнув режим читабельності для довгого читання.', 6000);
-        }else if (mode() === 'gentle'){
-          readAssistFromLongRead = true;
-          syncReadAssist();
-          showAIToast('AI: м\'яко підсилив читабельність для довгого читання.', 5000);
-        }
-      }
-    }
-  }, { passive: true });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden'){
-      pauseLongReadTracking();
+  function syncMissAssist(){
+    const count = pruneMisses();
+    if (!isSmart() || autoSuppressed){
+      setSource('misses', {});
       return;
     }
 
-    if ((window.scrollY || document.documentElement.scrollTop) >= 200){
-      resumeLongReadTracking();
+    if (count >= 5){
+      setSource('misses', {
+        largeTargetLevel: 2,
+        thickFocus: true
+      }, `після ${count} промахів збільшено цілі до 60 × 60px і посилено фокус.`);
+    }else if (count >= 3){
+      setSource('misses', {
+        largeTargetLevel: 1
+      }, `після ${count} промахів збільшено цілі до 52 × 52px.`);
     }else{
-      readAssistFromLongRead = false;
-      syncReadAssist();
-      resetLongReadTracking();
+      setSource('misses', {});
     }
-  });
+    scheduleMissPrune();
+  }
 
-  window.addEventListener('pagehide', pauseLongReadTracking, { passive: true });
-  window.addEventListener('pageshow', () => {
-    if ((window.scrollY || document.documentElement.scrollTop) >= 200){
-      resumeLongReadTracking();
-    }else{
-      readAssistFromLongRead = false;
-      syncReadAssist();
-      resetLongReadTracking();
-    }
-  }, { passive: true });
+  function handlePotentialMiss(e, source = 'click'){
+    if (!isSmart() || autoSuppressed || e.defaultPrevented) return;
+    if (e.target.closest?.(INTERACTIVE_SELECTOR)) return;
+    if (!nearestInteractiveWithin(e.clientX, e.clientY)) return;
 
-  document.addEventListener('selectionchange', () => {
-    if (mode() === 'off') return;
+    const now = performance.now();
+    const duplicate =
+      source === 'click' &&
+      lastMissInput.source === 'pointerup' &&
+      now - lastMissInput.time < 420 &&
+      Math.hypot(e.clientX - lastMissInput.x, e.clientY - lastMissInput.y) < 6;
 
-    const sel = document.getSelection?.();
-    const txt = sel?.toString()?.trim() || '';
-    readAssistFromSelection = txt.length >= 12;
+    if (duplicate) return;
+    lastMissInput = { x: e.clientX, y: e.clientY, time: now, source };
+    missTimes.push(performance.now());
+    syncMissAssist();
+  }
 
-    if (!readAssistFromSelection){
-      syncReadAssist();
+  function syncKeyboardAssist(){
+    if (!isSmart() || autoSuppressed){
+      setSource('keyboard', {});
       return;
     }
 
-    syncReadAssist();
-
-    const t = performance.now();
-    if (t - lastSelToastAt > 15000){
-      lastSelToastAt = t;
-      showAIToast(
-        mode() === 'auto'
-          ? 'AI: увімкнув читабельність під час роботи з текстом.'
-          : 'AI: м\'яко підсилив читабельність під час роботи з текстом.',
-        5500
-      );
+    if (tabCount >= 7){
+      setSource('keyboard', {
+        thickFocus: true,
+        underlineLinks: true,
+        largeTargetLevel: 1
+      }, 'після 7 натискань Tab підкреслено посилання та збільшено зони взаємодії.');
+    }else if (tabCount >= 3){
+      setSource('keyboard', {
+        thickFocus: true
+      }, 'після 3 натискань Tab посилено keyboard-focus.');
     }
-  });
+  }
 
-  function clearAutoAssistState(){
-    const st = currentState();
-    const patch = {};
+  function clearArticleTimer(){
+    window.clearTimeout(articleTimer);
+    articleTimer = 0;
+  }
 
-    if (Number(st.aiLevel ?? 0) !== 0) patch.aiLevel = 0;
-    if (Number(st.aiLevelZoom ?? 0) !== 0) patch.aiLevelZoom = 0;
-    if (Number(st.aiLevelMiss ?? 0) !== 0) patch.aiLevelMiss = 0;
-    if (Number(st.aiLevelRead ?? 0) !== 0) patch.aiLevelRead = 0;
-    if (!st.userSetMotion && st.reduceMotion) patch.reduceMotion = false;
+  function enableReadingAssist(reason){
+    if (!isSmart() || autoSuppressed || sources.reading.readingMode) return;
 
-    if (!Object.keys(patch).length) return;
-    a11y?.setAIState?.(patch);
+    setSource('reading', {
+      readingMode: true,
+      textScale: 115,
+      lineHeight: 1.85,
+      letterSpaceEm: 0.01,
+      columnWidth: 'narrow',
+      reduceMotion: true
+    }, `увімкнено комфортне читання: ${reason}.`);
+  }
+
+  function handleArticleScroll(){
+    if (!articleScrollEl || !isSmart() || autoSuppressed) return;
+
+    const available = Math.max(1, articleScrollEl.scrollHeight - articleScrollEl.clientHeight);
+    if (articleScrollEl.scrollTop / available >= 0.3){
+      enableReadingAssist('прочитано понад 30% статті');
+    }
+  }
+
+  function openArticle(dialog){
+    clearArticleTimer();
+    articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
+    articleEl = dialog || document.getElementById('news-dialog');
+    articleScrollEl = articleEl?.querySelector('.news-dialog-body') || null;
+    articleScrollEl?.addEventListener('scroll', handleArticleScroll, { passive: true });
+    articleTimer = window.setTimeout(() => {
+      enableReadingAssist('стаття відкрита понад 12 секунд');
+    }, 12000);
+  }
+
+  function closeArticle(){
+    clearArticleTimer();
+    articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
+    articleScrollEl = null;
+    articleEl = null;
+    setSource('reading', {});
+  }
+
+  function handleSelection(){
+    if (!articleEl || !isSmart() || autoSuppressed) return;
+
+    const selection = document.getSelection?.();
+    const text = selection?.toString()?.trim() || '';
+    const anchor = selection?.anchorNode;
+    if (text.length > 100 && anchor && articleEl.contains(anchor)){
+      enableReadingAssist('виділено понад 100 символів');
+    }
+  }
+
+  function pauseMotionBriefly(){
+    document.body.classList.add('motion-paused');
+    window.clearTimeout(motionPauseTimer);
+    motionPauseTimer = window.setTimeout(() => {
+      document.body.classList.remove('motion-paused');
+    }, 1300);
+  }
+
+  function registerSharpScroll(direction){
+    const now = performance.now();
+
+    const duplicate =
+      now - lastSharpInput.time < 180 &&
+      direction === lastSharpInput.direction;
+
+    if (duplicate || !isSmart() || autoSuppressed) return;
+
+    pauseMotionBriefly();
+    lastSharpInput = { direction, time: now };
+    sharpScrollTimes = sharpScrollTimes.filter((time) => now - time <= 8000);
+    sharpScrollTimes.push(now);
+
+    if (sharpScrollTimes.length >= 3){
+      setSource('scroll', {
+        reduceMotion: true
+      }, 'після трьох різких прокручувань стабільно зменшено рух.');
+    }
+  }
+
+  function handleSharpScroll(){
+    const now = performance.now();
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const distance = Math.abs(y - lastScroll.y);
+    const elapsed = Math.max(1, now - lastScroll.time);
+    const direction = Math.sign(y - lastScroll.y) || 1;
+    lastScroll = { y, time: now };
+
+    if (distance < 180 || distance / elapsed <= 1.45) return;
+
+    registerSharpScroll(direction);
+  }
+
+  function handleWheelScroll(e){
+    if (e.ctrlKey || e.metaKey){
+      updateGestureZoom(e.deltaY);
+      return;
+    }
+
+    const now = performance.now();
+    const direction = Math.sign(e.deltaY);
+    if (!direction) return;
+
+    if (
+      now - wheelScroll.lastAt > 180 ||
+      direction !== wheelScroll.direction
+    ){
+      wheelScroll = {
+        delta: 0,
+        direction,
+        startedAt: now,
+        lastAt: now
+      };
+    }
+
+    wheelScroll.delta += Math.abs(e.deltaY);
+    wheelScroll.lastAt = now;
+    const elapsed = Math.max(1, now - wheelScroll.startedAt);
+
+    if (wheelScroll.delta >= 180 && wheelScroll.delta / elapsed > 1.45){
+      registerSharpScroll(direction);
+      wheelScroll = {
+        delta: 0,
+        direction,
+        startedAt: now,
+        lastAt: now
+      };
+    }
+  }
+
+  function ensureInlineError(el, message){
+    if (!el || !message) return;
+
+    const id = el.id || (el.id = `field_${Math.random().toString(36).slice(2, 9)}`);
+    const errorId = `${id}__error`;
+    let error = document.getElementById(errorId);
+
+    if (!error){
+      error = document.createElement('div');
+      error.id = errorId;
+      error.className = 'a11y-field-error';
+      error.setAttribute('role', 'alert');
+      (el.closest('.field') || el.parentElement || el).appendChild(error);
+    }
+
+    error.textContent = message;
+    el.setAttribute('aria-invalid', 'true');
+    const describedBy = new Set((el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+    describedBy.add(errorId);
+    el.setAttribute('aria-describedby', Array.from(describedBy).join(' '));
+  }
+
+  function clearAutoState({ suppress = false } = {}){
+    clearArticleTimer();
+    articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
+    articleEl = null;
+    articleScrollEl = null;
+    missTimes = [];
+    window.clearTimeout(missTimer);
+    missTimer = 0;
+    tabCount = 0;
+    sharpScrollTimes = [];
+    lastMissInput = { x: 0, y: 0, time: 0, source: '' };
+    wheelScroll = { delta: 0, direction: 0, startedAt: 0, lastAt: 0 };
+    lastSharpInput = { direction: 0, time: 0 };
+    window.clearTimeout(motionPauseTimer);
+    motionPauseTimer = 0;
+    document.body.classList.remove('motion-paused');
+    decisionCache.clear();
+    clearSources();
+    autoSuppressed = suppress;
+    lastZoomLevel = zoomLevelFromFactor(getZoomFactor());
   }
 
   function handleModeChange(force = false){
-    const nextMode = currentMode();
-    if (!force && nextMode === lastMode) return;
-    lastMode = nextMode;
+    const next = mode();
+    if (!force && next === lastMode) return;
+    lastMode = next;
+    clearAutoState();
+    autoSuppressed = false;
+    if (!isEnabled()) return;
 
-    resetAIState();
-
-    if (nextMode !== 'auto'){
-      clearAutoAssistState();
-      return;
-    }
-
-    clearAutoAssistState();
     applySystemPrefs();
     handleZoomChange();
-    syncMissAssist({ announce: false });
-    readAssistFromSelection = (document.getSelection ? (document.getSelection()?.toString()?.trim() || '') : '').length >= 12;
-    syncReadAssist();
   }
 
-  setTimeout(checkContrastAndAdapt, 350);
-  window.addEventListener('resize', () => { try { checkContrastAndAdapt(); } catch {} }, { passive: true });
-  window.addEventListener('resize', handleZoomChange, { passive: true });
-  window.visualViewport?.addEventListener('resize', handleZoomChange);
-  window.visualViewport?.addEventListener('scroll', handleZoomChange);
-
-  const modeObserver = new MutationObserver(() => handleModeChange());
-  modeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ai-mode'] });
-  handleModeChange(true);
-
-  const ticker = document.getElementById('ticker-track');
-  const isTickerPausedByUser = () => ticker?.dataset?.userPaused === 'true';
-  const pauseTicker = () => {
-    if (!ticker) return;
-    ticker.dataset.aiPaused = 'true';
-    ticker.dispatchEvent(new CustomEvent('ticker:pause'));
-  };
-  const playTicker = () => {
-    if (!ticker || isTickerPausedByUser()) return;
-    ticker.dataset.aiPaused = 'false';
-    ticker.dispatchEvent(new CustomEvent('ticker:resume'));
-  };
-
-  document.addEventListener('visibilitychange', () => {
-    if (!ticker) return;
-    if (document.visibilityState === 'hidden') pauseTicker();
-    else playTicker();
+  Object.values(media).forEach((query) => {
+    query?.addEventListener?.('change', () => {
+      autoSuppressed = false;
+      applySystemPrefs({ announce: true });
+    });
   });
 
-  function resetAIState(){
-    const body = document.body;
-    if (!body) return;
+  document.addEventListener('pointerup', (e) => {
+    if (e.isPrimary === false || (Number.isFinite(e.button) && e.button !== 0)) return;
+    handlePotentialMiss(e, 'pointerup');
+  }, true);
+  document.addEventListener('click', (e) => {
+    if (e.detail === 0) return;
+    handlePotentialMiss(e, 'click');
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || !isSmart() || autoSuppressed) return;
+    tabCount += 1;
+    syncKeyboardAssist();
+  }, true);
+  document.addEventListener('selectionchange', handleSelection);
+  document.addEventListener('news:dialog-opened', (e) => openArticle(e.detail?.dialog));
+  document.addEventListener('news:dialog-closed', closeArticle);
+  document.addEventListener('a11y:auto-clear', () => clearAutoState({ suppress: true }));
+  document.addEventListener('a11y:reset-all', () => clearAutoState({ suppress: true }));
 
-    lastZoomLevel = 0;
-    lastSelToastAt = 0;
-    lastMissLevel = 0;
-    missTimes = [];
-    clearMissDecayTimer();
-    readAssistFromSelection = false;
-    readAssistFromLongRead = false;
-    sawTab = false;
-    tabCount = 0;
-    lastActivate = performance.now();
+  window.addEventListener('scroll', handleSharpScroll, { passive: true });
+  window.addEventListener('resize', () => startZoomMonitor(), { passive: true });
+  window.addEventListener('orientationchange', () => {
+    window.setTimeout(resetZoomBaseline, 250);
+  }, { passive: true });
+  window.visualViewport?.addEventListener('resize', () => startZoomMonitor(), { passive: true });
+  window.visualViewport?.addEventListener('scroll', () => {
+    syncVisualViewport();
+    pollZoom();
+  }, { passive: true });
 
-    body.classList.remove('a11y-reading-ruler', 'a11y-declutter', 'a11y-emphasize-click', 'a11y-hover-glow');
-    if (!currentState().thickFocus){
-      body.classList.remove('focus-thick');
+  window.addEventListener('wheel', handleWheelScroll, { passive: true });
+  window.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+
+    if (e.key === '0'){
+      gestureZoomFactor = 1;
+      startZoomMonitor();
+    }else if (e.key === '+' || e.key === '='){
+      gestureZoomFactor = Math.min(4, gestureZoomFactor * 1.1);
+      startZoomMonitor();
+    }else if (e.key === '-'){
+      gestureZoomFactor = Math.max(1, gestureZoomFactor / 1.1);
+      startZoomMonitor();
     }
-    if (Number(currentState().aiLevelMiss ?? 0) !== 0){
-      a11y?.setAILevels?.({ aiLevelMiss: 0 });
+  }, { passive: true });
+
+  document.addEventListener('invalid', (e) => {
+    if (!isEnabled()) return;
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
+    ensureInlineError(el, el.validationMessage || 'Перевірте це поле.');
+  }, true);
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
+    if (!el.checkValidity()){
+      return;
     }
-    if (Number(currentState().aiLevelRead ?? 0) !== 0){
-      a11y?.setAILevels?.({ aiLevelRead: 0 });
-    }
-    resetLongReadTracking();
-  }
+    el.removeAttribute('aria-invalid');
+    const error = document.getElementById(`${el.id}__error`);
+    if (error) error.remove();
+  }, true);
 
-  document.addEventListener('a11y:reset-all', resetAIState);
+  const observer = new MutationObserver(() => handleModeChange());
+  observer.observe(document.body, { attributes: true, attributeFilter: ['data-ai-mode'] });
 
-  resetLongReadTracking();
+  syncVisualViewport();
+  lastZoomFingerprint = getZoomFingerprint();
+  window.setInterval(pollZoom, 800);
+  handleModeChange(true);
 
-  return { notify: showAIToast, reset: resetAIState };
+  return {
+    notify: showAIToast,
+    reset: () => clearAutoState({ suppress: true })
+  };
 }

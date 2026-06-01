@@ -1,5 +1,5 @@
 import { NEWS } from './news-data.js';
-import { renderNews, setNewsFilter, setNewsQuery, getFilterState, loadSavedFilterState, getNewsById } from './news/render.js';
+import { renderNews, setNewsFilter, setNewsQuery, setNewsState, getFilterState, loadSavedFilterState, getNewsById } from './news/render.js';
 import { initNav } from './ui/nav.js';
 import { initBackToTop } from './ui/back-to-top.js';
 import { initA11yPanel } from './a11y/panel.js';
@@ -10,6 +10,15 @@ import { initAIExtras } from './ai_extras.js';
 function ready(fn){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
   else fn();
+}
+
+function escapeHTML(str){
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 ready(() => {
@@ -87,8 +96,7 @@ ready(() => {
     if (search) search.value = '';
     setScenarioActive('');
     applyFilterUI('all');
-    setNewsFilter('all');
-    setNewsQuery('');
+    setNewsState({ filter: 'all', query: '' });
     ensureTickerRunning(true);
   }
 
@@ -140,6 +148,7 @@ ready(() => {
     newsDialog.hidden = true;
     document.body.dataset.newsDialogOpen = 'false';
     syncSharedOverlayState();
+    document.dispatchEvent(new CustomEvent('news:dialog-closed'));
     if (restoreFocus) lastDialogTrigger?.focus?.();
   }
 
@@ -153,23 +162,25 @@ ready(() => {
     newsDialogImage.src = item.image || '';
     newsDialogImage.alt = item.imageAlt || item.title;
     newsDialogTags.innerHTML = (item.tags || [])
-      .map((tag) => `<span class="nav-pill">${tag}</span>`)
+      .map((tag) => `<span class="nav-pill">${escapeHTML(tag)}</span>`)
       .join('');
 
     newsDialog.hidden = false;
     document.body.dataset.newsDialogOpen = 'true';
     syncSharedOverlayState();
+    document.dispatchEvent(new CustomEvent('news:dialog-opened', {
+      detail: { dialog: newsDialog, item }
+    }));
     newsDialogClose?.focus();
   }
 
+  const savedState = loadSavedFilterState();
+  setNewsState(savedState);
   const mount = document.getElementById('cards');
   if (mount) renderNews(mount, NEWS);
   renderTicker(NEWS);
 
-  const savedState = loadSavedFilterState();
   if (search) search.value = savedState.query;
-  setNewsFilter(savedState.filter);
-  setNewsQuery(savedState.query);
   applyFilterUI(savedState.filter);
 
   initNav({
@@ -278,8 +289,7 @@ ready(() => {
     setScenarioActive(focus);
     applyFilterUI(target.filter);
     if (search) search.value = target.query;
-    setNewsFilter(target.filter);
-    setNewsQuery(target.query);
+    setNewsState(target);
     updateClearFiltersVisibility();
 
     document.getElementById('cards')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -287,8 +297,7 @@ ready(() => {
   });
 
   document.addEventListener('a11y:reset-all', () => {
-    document.body.dataset.newsDialogOpen = 'false';
-    document.body.dataset.a11yPanelOpen = 'false';
+    if (newsDialog && !newsDialog.hidden) closeNewsDialog({ restoreFocus: false });
     resetExperienceState();
     syncSharedOverlayState();
     ai?.reset?.();
@@ -304,7 +313,12 @@ ready(() => {
 
     if (qa === 'readable'){
       const st = a11y.getState();
-      a11y.setState({ userLevel: Math.max(st.userLevel ?? 0, 2), measureGlobal: true });
+      a11y.setState({
+        textScale: Math.max(st.textScale ?? 100, 115),
+        lineHeight: Math.max(st.lineHeight ?? 1.6, 1.8),
+        columnWidth: 'narrow',
+        readingMode: true
+      });
       return;
     }
 
@@ -466,6 +480,10 @@ function createTickerController(track){
     return document.body.classList.contains('reduce-motion') || !!mediaQuery?.matches;
   }
 
+  function shouldPauseMotion(){
+    return document.body.classList.contains('motion-paused');
+  }
+
   function stop(){
     if (frameId) cancelAnimationFrame(frameId);
     frameId = 0;
@@ -490,7 +508,7 @@ function createTickerController(track){
   }
 
   function tick(ts){
-    if (shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+    if (shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
       stop();
       return;
     }
@@ -509,7 +527,7 @@ function createTickerController(track){
   }
 
   function start(){
-    if (frameId || !recalc() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+    if (frameId || !recalc() || shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
       if (shouldReduceMotion()){
         offset = 0;
         track.style.transform = 'translate3d(0, 0, 0)';
@@ -539,7 +557,7 @@ function createTickerController(track){
     const htmlOnce = headlines.map((title) => `
       <div class="ticker-item" role="listitem">
         <span class="ticker-dot" aria-hidden="true">•</span>
-        <span>${title}</span>
+        <span>${escapeHTML(title)}</span>
       </div>
     `).join('');
 
@@ -575,6 +593,11 @@ function createTickerController(track){
   }
 
   const observer = new MutationObserver(() => {
+    if (shouldPauseMotion()){
+      stop();
+      return;
+    }
+
     if (shouldReduceMotion()){
       stop();
       offset = 0;

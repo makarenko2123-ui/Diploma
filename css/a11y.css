@@ -3,8 +3,8 @@
 /* FAB ♿ */
 .a11y-fab{
   position:fixed;
-  right: calc(18px + env(safe-area-inset-right));
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  right: calc(var(--vv-right) + 18px + env(safe-area-inset-right));
+  bottom: calc(var(--vv-bottom) + 18px + env(safe-area-inset-bottom));
   width:58px;height:58px;
   border-radius:20px;
   background:var(--fab-bg);
@@ -23,13 +23,7 @@
 body[data-zoom-assist="2"] .a11y-fab,
 body[data-zoom-assist="3"] .a11y-fab,
 body[data-zoom-assist="4"] .a11y-fab{
-  position:static;
-  right:auto;
-  bottom:auto;
   min-height:44px;
-  box-shadow:none;
-  margin-left:0;
-  justify-self:end;
   width:48px;
   height:48px;
   border-radius:999px;
@@ -90,10 +84,11 @@ body[data-zoom-assist="4"] .fab-tooltip{
 /* Panel */
 .a11y-panel{
   position:fixed;
-  right:0;top:0;
-  height:100dvh;
-  width:min(360px, 100vw);
-  max-width:100vw;
+  right:var(--vv-right);
+  top:var(--vv-top);
+  height:var(--vv-height);
+  width:min(390px, var(--vv-width));
+  max-width:var(--vv-width);
   background: var(--bg-elevated);
   border-left:1px solid var(--border);
   display:flex;
@@ -153,6 +148,61 @@ body[data-zoom-assist="4"] .fab-tooltip{
   padding:10px 16px calc(10px + env(safe-area-inset-bottom));
   background: var(--bg-elevated);
   border-top:1px solid var(--border);
+}
+
+.auto-status{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 12px;
+  align-items:center;
+  margin:8px 0;
+  color:var(--muted);
+  font-size:0.82rem;
+}
+
+.auto-activity{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.auto-activity::before{
+  content:"";
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:var(--muted);
+}
+
+.auto-activity[data-active="true"]::before{
+  background:#22c55e;
+  box-shadow:0 0 0 3px color-mix(in oklab, #22c55e 24%, transparent);
+}
+
+.auto-log{
+  margin-top:10px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+
+.auto-log h3{
+  margin:0 0 6px;
+  font-size:0.88rem;
+}
+
+.auto-log ul{
+  display:grid;
+  gap:4px;
+  margin:0;
+  padding-left:18px;
+  color:var(--muted);
+  font-size:0.78rem;
+}
+
+#auto-undo{
+  width:100%;
+  justify-content:center;
 }
 
 /* Preset buttons full-width */
@@ -229,16 +279,10 @@ body.dialog-open{
 
 @media (max-width:700px){
   .a11y-fab{
-    position:static;
-    right:auto;
-    bottom:auto;
     width:44px;
     height:44px;
     min-height:44px;
-    border-radius:999px;
-    box-shadow:none;
     font-size:20px;
-    margin-left:0;
   }
 
   .fab-tooltip{

@@ -2,10 +2,9 @@
 .ui-control{
   font-family:inherit;
   border-radius: var(--control-radius);
-  padding: calc(var(--control-pad-y) * var(--ui-scale))
-           calc(var(--control-pad-x) * var(--ui-scale));
-  min-height: calc(var(--control-min-h) * var(--ui-scale));
-  font-size: calc(0.92rem * var(--ui-scale));
+  padding: var(--control-pad-y) var(--control-pad-x);
+  min-height: var(--control-min-h);
+  font-size: 0.92rem;
   touch-action: manipulation;
 }
 
@@ -228,22 +227,22 @@
 .card-tts-btn{
   position:absolute;
   right:10px;top:10px;
-  width: calc(44px * var(--ui-scale));
-  height: calc(44px * var(--ui-scale));
+  width: 44px;
+  height: 44px;
   border-radius:999px;
   border:1px solid rgba(148,163,184,0.8);
   background: var(--surface);
   color:var(--fg);
   display:flex;align-items:center;justify-content:center;
-  font-size: calc(14px * var(--ui-scale));
+  font-size: 14px;
   cursor:pointer;
 }
 
 /* Back-to-top */
 .back-to-top{
   position:fixed;
-  right: calc(18px + env(safe-area-inset-right));
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  right: calc(var(--vv-right) + 18px + env(safe-area-inset-right));
+  bottom: calc(var(--vv-bottom) + 88px + env(safe-area-inset-bottom));
   width:44px;height:44px;
   border-radius:999px;
   border:1px solid var(--border);
@@ -258,8 +257,8 @@
 body[data-zoom-assist="2"] .back-to-top,
 body[data-zoom-assist="3"] .back-to-top,
 body[data-zoom-assist="4"] .back-to-top{
-  right: calc(12px + env(safe-area-inset-right));
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  right: calc(var(--vv-right) + 12px + env(safe-area-inset-right));
+  bottom: calc(var(--vv-bottom) + 82px + env(safe-area-inset-bottom));
 }
 
 .news-link{
@@ -412,10 +411,11 @@ body[data-zoom-assist="4"] .card-body{
 
 .news-dialog{
   position: fixed;
-  inset: 50% auto auto 50%;
+  top:var(--vv-center-y);
+  left:var(--vv-center-x);
   transform: translate(-50%, -50%);
-  width: min(760px, calc(100vw - 24px));
-  max-height: min(88vh, 820px);
+  width: min(760px, calc(var(--vv-width) - 24px));
+  max-height: min(var(--vv-dialog-height), 820px);
   z-index: 90;
   display: grid;
   overflow: hidden;
@@ -484,15 +484,18 @@ body[data-zoom-assist="4"] .card-body{
   }
 
   .back-to-top{
-    right: calc(14px + env(safe-area-inset-right));
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: calc(var(--vv-right) + 14px + env(safe-area-inset-right));
+    bottom: calc(var(--vv-bottom) + 78px + env(safe-area-inset-bottom));
   }
 
   .news-dialog{
-    inset:auto 0 0 0;
+    top:auto;
+    right:var(--vv-right);
+    bottom:var(--vv-bottom);
+    left:var(--vv-left);
     transform:none;
-    width:100vw;
-    max-height:min(88vh, 760px);
+    width:var(--vv-width);
+    max-height:min(var(--vv-dialog-height), 760px);
     border-radius:22px 22px 0 0;
   }
 

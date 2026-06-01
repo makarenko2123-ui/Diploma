@@ -3,6 +3,9 @@ let _mount = null;
 let _filter = 'all';
 let _query = '';
 let _renderTimers = [];
+let _renderFrame = 0;
+
+const VALID_FILTERS = new Set(['all', 'politics', 'tech', 'sport', 'world', 'culture']);
 
 const CATEGORY_FALLBACK = {
   tech: { bg: '#0f172a', accent: '#38bdf8', label: 'Технології', glyph: '◈' },
@@ -87,8 +90,14 @@ function attachImageFallbacks(items){
 }
 
 function clearRenderTimers(){
+  if (_renderFrame) cancelAnimationFrame(_renderFrame);
+  _renderFrame = 0;
   _renderTimers.forEach((timerId) => clearTimeout(timerId));
   _renderTimers = [];
+}
+
+function normalizeFilter(filter){
+  return VALID_FILTERS.has(filter) ? filter : 'all';
 }
 
 function shouldReduceMotion(){
@@ -110,6 +119,7 @@ function matches(item){
 function render(){
   if (!_mount) return;
 
+  clearRenderTimers();
   const items = _all.filter(matches);
   const live = document.getElementById('a11y-live');
 
@@ -172,9 +182,9 @@ function render(){
   _mount.innerHTML = html || '<p class="meta" role="status">Немає новин для цього фільтра або пошуку.</p>';
 
   attachImageFallbacks(items);
-  clearRenderTimers();
 
-  requestAnimationFrame(() => {
+  _renderFrame = requestAnimationFrame(() => {
+    _renderFrame = 0;
     const cards = _mount.querySelectorAll('.card');
 
     if (shouldReduceMotion()){
@@ -208,14 +218,21 @@ export function getNewsById(id){
 }
 
 export function setNewsFilter(filter){
-  _filter = filter || 'all';
-  render();
-  saveFilterState(_filter, _query);
+  setNewsState({ filter });
 }
 
 export function setNewsQuery(q){
-  _query = String(q || '').trim();
-  render();
+  setNewsState({ query: q });
+}
+
+export function setNewsState({ filter = _filter, query = _query } = {}){
+  const nextFilter = normalizeFilter(filter);
+  const nextQuery = String(query || '').trim();
+  const changed = nextFilter !== _filter || nextQuery !== _query;
+
+  _filter = nextFilter;
+  _query = nextQuery;
+  if (changed) render();
   saveFilterState(_filter, _query);
 }
 
@@ -232,8 +249,10 @@ function saveFilterState(filter, query){
 
 export function loadSavedFilterState(){
   try{
-    const filter = localStorage.getItem('news-filter') || 'all';
+    const savedFilter = localStorage.getItem('news-filter') || 'all';
+    const filter = normalizeFilter(savedFilter);
     const query = localStorage.getItem('news-query') || '';
+    if (filter !== savedFilter) localStorage.setItem('news-filter', filter);
     return { filter, query };
   }catch{
     return { filter: 'all', query: '' };

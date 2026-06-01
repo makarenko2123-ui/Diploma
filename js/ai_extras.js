@@ -6,7 +6,6 @@ function storageKey(){
 export function initAIExtras({ notify } = {}){
   initReadPosition({ notify });
   initA11yAuditUI({ notify });
-  initTTSAutoPause({ notify });
 }
 
 function initReadPosition({ notify } = {}){
@@ -70,11 +69,22 @@ function runMiniAudit(){
     const [r, g, b] = rgb.map(srgbToLin);
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   };
-  const parseRgb = (str) => {
+  const parseRgba = (str) => {
     const m = str.match(/rgba?\(([^)]+)\)/i);
     if (!m) return null;
     const parts = m[1].split(',').map((x) => parseFloat(x.trim()));
-    return parts.length >= 3 ? parts.slice(0, 3) : null;
+    return parts.length >= 3 ? [...parts.slice(0, 3), Number.isFinite(parts[3]) ? parts[3] : 1] : null;
+  };
+  const composite = (foreground, background) => {
+    const alpha = foreground[3] + (background[3] * (1 - foreground[3]));
+    if (!alpha) return [0, 0, 0, 0];
+
+    return [
+      ((foreground[0] * foreground[3]) + (background[0] * background[3] * (1 - foreground[3]))) / alpha,
+      ((foreground[1] * foreground[3]) + (background[1] * background[3] * (1 - foreground[3]))) / alpha,
+      ((foreground[2] * foreground[3]) + (background[2] * background[3] * (1 - foreground[3]))) / alpha,
+      alpha
+    ];
   };
   const contrastRatio = (fgRgb, bgRgb) => {
     const l1 = relLuminance(fgRgb);
@@ -115,14 +125,26 @@ function runMiniAudit(){
       .map((id) => document.getElementById(id))
       .find(Boolean) || null;
   };
-  const resolveOpaqueBackground = (el) => {
+  const resolveBackground = (el) => {
+    const layers = [];
+    let complex = false;
     let node = el;
+
     while (node){
-      const bg = getComputedStyle(node).backgroundColor;
-      if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') return parseRgb(bg);
+      const style = getComputedStyle(node);
+      if (style.backgroundImage && style.backgroundImage !== 'none') complex = true;
+
+      const color = parseRgba(style.backgroundColor);
+      if (color && color[3] > 0) layers.push(color);
       node = node.parentElement;
     }
-    return parseRgb(getComputedStyle(document.body).backgroundColor);
+
+    let color = [255, 255, 255, 1];
+    for (let index = layers.length - 1; index >= 0; index--){
+      color = composite(layers[index], color);
+    }
+
+    return { rgb: color.slice(0, 3), complex };
   };
 
   document.querySelectorAll('img').forEach((img) => {
@@ -130,6 +152,14 @@ function runMiniAudit(){
     if (img.getAttribute('alt') === null){
       addIssue('img-alt', 'Зображення без alt.', img);
     }
+  });
+
+  const seenIds = new Set();
+  document.querySelectorAll('[id]').forEach((el) => {
+    if (seenIds.has(el.id)){
+      addIssue('duplicate-id', `Повторюваний id: ${el.id}.`, el);
+    }
+    seenIds.add(el.id);
   });
 
   document.querySelectorAll('button, a, [role="button"]').forEach((el) => {
@@ -179,15 +209,21 @@ function runMiniAudit(){
 
   document.querySelectorAll('p, li, a, button, label, input, select, textarea, h1, h2, h3, h4').forEach((el) => {
     if (!isVisible(el) || isAriaHidden(el)) return;
-    const text = (el.textContent || '').trim();
+    if (el instanceof HTMLInputElement && ['range', 'checkbox', 'radio', 'color', 'file', 'hidden'].includes(el.type)) return;
+
+    const fieldText = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+      ? (el.value || el.placeholder || '')
+      : '';
+    const text = (fieldText || el.textContent || '').trim();
     if (!text && !(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
 
     const cs = getComputedStyle(el);
-    const fg = parseRgb(cs.color);
-    const bg = resolveOpaqueBackground(el);
-    if (!fg || !bg) return;
+    const fg = parseRgba(cs.color);
+    const bg = resolveBackground(el);
+    if (!fg || !bg || bg.complex) return;
 
-    const ratio = contrastRatio(fg, bg);
+    const effectiveFg = composite(fg, [...bg.rgb, 1]).slice(0, 3);
+    const ratio = contrastRatio(effectiveFg, bg.rgb);
     if (ratio < 4.5){
       addIssue('contrast', `Низький контраст тексту (${ratio.toFixed(2)}:1).`, el);
     }
@@ -266,15 +302,4 @@ function escapeHtml(s){
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
-}
-
-function initTTSAutoPause({ notify } = {}){
-  if (!('speechSynthesis' in window)) return;
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && (speechSynthesis.speaking || speechSynthesis.pending)){
-      speechSynthesis.cancel();
-      notify?.('AI: озвучку зупинено, вкладка неактивна.', 3500);
-    }
-  });
 }

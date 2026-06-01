@@ -4,6 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>NewsPortal - Актуальні новини</title>
+  <link rel="icon" href="data:,">
 
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 
@@ -49,21 +50,6 @@
         <button type="button" data-filter="culture" class="nav-pill ui-control" data-ai-click-target>Культура</button>
       </nav>
 
-      <button
-        id="a11y-toggle"
-        class="a11y-fab ui-control"
-        type="button"
-        aria-haspopup="dialog"
-        aria-controls="a11y-panel"
-        aria-expanded="false"
-        aria-describedby="a11y-tip"
-        data-ai-click-target
-      >
-        <span aria-hidden="true">♿</span>
-        <span class="fab-tooltip" role="tooltip" id="a11y-tip">
-          Налаштування доступності
-        </span>
-      </button>
     </div>
 
     <nav id="mobile-menu" class="mobile-menu" hidden aria-label="Розділи (мобільне меню)">
@@ -75,6 +61,23 @@
       <button type="button" data-filter="culture" class="nav-pill ui-control" data-ai-click-target>Культура</button>
     </nav>
   </header>
+
+  <button
+    id="a11y-toggle"
+    class="a11y-fab ui-control"
+    type="button"
+    aria-label="Налаштування доступності"
+    aria-haspopup="dialog"
+    aria-controls="a11y-panel"
+    aria-expanded="false"
+    aria-describedby="a11y-tip"
+    data-ai-click-target
+  >
+    <span aria-hidden="true">Aa</span>
+    <span class="fab-tooltip" role="tooltip" id="a11y-tip">
+      Налаштування доступності
+    </span>
+  </button>
 
   <section class="ticker" aria-label="Стрічка заголовків">
     <div class="ticker-viewport">
@@ -228,7 +231,7 @@
     <div class="panel-body">
       <fieldset class="field">
         <legend>Швидкі пресети</legend>
-        <button type="button" class="btn-outline ui-control" data-preset="reading">Легке читання</button>
+        <button type="button" class="btn-outline ui-control" data-preset="reading">Комфортне читання</button>
         <button type="button" class="btn-outline ui-control" data-preset="vision">Слабкий зір</button>
         <button type="button" class="btn-outline ui-control" data-preset="keyboard">Клавіатура</button>
         <button type="button" class="btn-outline ui-control" data-preset="focus">Концентрація</button>
@@ -238,17 +241,31 @@
         <legend>Шрифт</legend>
         <label><input type="radio" name="fontfam" value="system"> Системний</label>
         <label><input type="radio" name="fontfam" value="hyperlegible" checked> Atkinson Hyperlegible</label>
+        <label class="checkbox"><input id="simple-font" type="checkbox"> Простий читабельний шрифт</label>
       </fieldset>
 
       <label class="field">
-        <span>Рівень збільшення (0-4)</span>
-        <input id="a11y-level" type="range" min="0" max="4" step="1" value="0" aria-valuetext="Рівень 0 з 4">
+        <span>Розмір тексту: <output id="text-scale-value" for="text-scale">100%</output></span>
+        <input id="text-scale" type="range" min="90" max="140" step="5" value="100" aria-valuetext="Розмір тексту 100 відсотків">
       </label>
-      <p class="hint">Рівень збільшує текст, кнопки, відступи, фокус і читабельність.</p>
 
       <label class="field">
-        <span>Інтервал між літерами</span>
+        <span>Міжрядковий інтервал: <output id="line-height-value" for="line-height">160%</output></span>
+        <input id="line-height" type="range" min="1.4" max="2" step="0.05" value="1.6" aria-valuetext="Міжрядковий інтервал 160 відсотків">
+      </label>
+
+      <label class="field">
+        <span>Інтервал між літерами: <output id="letterspace-value" for="letterspace">0%</output></span>
         <input id="letterspace" type="range" min="0" max="0.12" step="0.01" value="0" aria-valuetext="Стандартний інтервал між літерами">
+      </label>
+
+      <label class="field" for="column-width">
+        <span>Ширина текстової колонки</span>
+        <select id="column-width">
+          <option value="narrow">Вузька</option>
+          <option value="comfortable" selected>Комфортна</option>
+          <option value="wide">Широка</option>
+        </select>
       </label>
 
       <fieldset class="field">
@@ -260,28 +277,40 @@
       </fieldset>
 
       <fieldset class="field">
-        <legend>Посилання та фокус</legend>
+        <legend>Читання, посилання та фокус</legend>
         <label class="checkbox"><input id="underline-links" type="checkbox"> Підкреслювати всі посилання</label>
-        <label class="checkbox"><input id="thick-focus" type="checkbox"> Товстий фокус</label>
-        <label class="checkbox"><input id="measure-global" type="checkbox" checked> Обмежувати довжину рядка на всьому сайті</label>
+        <label class="checkbox"><input id="thick-focus" type="checkbox"> Посилений keyboard-focus</label>
         <label class="checkbox"><input id="focus-always" type="checkbox"> Показувати фокус і при кліку</label>
         <label class="checkbox"><input id="reduce-motion" type="checkbox"> Зменшити анімації</label>
+        <label class="checkbox"><input id="reading-mode" type="checkbox"> Комфортний режим читання</label>
+        <label class="checkbox"><input id="large-targets" type="checkbox"> Великі інтерактивні елементи</label>
+        <label class="checkbox"><input id="declutter" type="checkbox"> Без зайвих декоративних елементів</label>
       </fieldset>
 
       <fieldset class="field">
         <legend>Інтелектуальна адаптація</legend>
         <label class="field" for="ai-mode">
-          <span>Режим AI-адаптації</span>
+          <span>Режим автоматичної адаптації</span>
           <select id="ai-mode" name="ai-mode">
-            <option value="auto">Автоматично (рекомендовано)</option>
+            <option value="auto">Розумний (усі адаптації)</option>
             <option value="gentle">М'який</option>
             <option value="off">Вимкнено</option>
           </select>
         </label>
         <p class="hint">
-          Система аналізує промахи по кнопках та zoom сторінки й автоматично
-          збільшує шрифт, кнопки та контраст.
+          Автоматичні рішення тимчасові. Ручні налаштування завжди мають пріоритет.
         </p>
+        <div class="auto-status" aria-live="polite" aria-atomic="true">
+          <span id="auto-activity" class="auto-activity" data-active="false">Автоадаптація неактивна</span>
+          <span id="auto-count">Авто-змін: 0</span>
+        </div>
+        <button id="auto-undo" class="btn-outline ui-control" type="button">Скасувати авто-зміни</button>
+        <div class="auto-log">
+          <h3>Останні рішення</h3>
+          <ul id="auto-log-list">
+            <li>Автоматичних рішень ще немає.</li>
+          </ul>
+        </div>
       </fieldset>
 
       <fieldset class="field">
@@ -317,7 +346,7 @@
     </div>
 
     <div class="panel-actions">
-      <button id="a11y-reset" class="btn-outline ui-control" type="button" data-ai-click-target>Скинути</button>
+      <button id="a11y-reset" class="btn-outline ui-control" type="button" data-ai-click-target>Скинути всі налаштування</button>
       <button id="a11y-close2" class="btn-primary ui-control" type="button" data-ai-click-target>Закрити</button>
     </div>
   </aside>
@@ -360,6 +389,22 @@
     <span class="ai-icon" aria-hidden="true">✨</span>
     <span class="ai-text">AI адаптував інтерфейс</span>
   </div>
+
+  <section id="tts-player" class="tts-player glass" role="region" aria-label="Плеєр озвучення" hidden>
+    <div class="tts-player-head">
+      <strong>Озвучення</strong>
+      <span id="tts-status" role="status" aria-live="polite">Зупинено</span>
+    </div>
+    <div class="tts-player-actions">
+      <button id="tts-pause" class="btn-outline ui-control" type="button">Пауза</button>
+      <button id="tts-resume" class="btn-outline ui-control" type="button">Продовжити</button>
+      <button id="tts-stop" class="btn-outline ui-control" type="button">Зупинити</button>
+    </div>
+    <label class="tts-player-rate" for="tts-player-rate">
+      <span>Швидкість</span>
+      <input id="tts-player-rate" type="range" min="0.7" max="1.4" step="0.05" value="1" aria-valuetext="Швидкість 100 відсотків">
+    </label>
+  </section>
 
   <script type="module" src="js/app.js"></script>
 </body>
