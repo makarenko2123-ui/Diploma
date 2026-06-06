@@ -21,6 +21,16 @@ function escapeHTML(str){
     .replaceAll("'", '&#039;');
 }
 
+function preferredScrollBehavior(){
+  const motionPref = document.body?.dataset.motionPref;
+  const reduceMotion =
+    motionPref === 'user' ||
+    motionPref === 'auto' ||
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  return reduceMotion ? 'auto' : 'smooth';
+}
+
 ready(() => {
   const tts = initTTS();
   const a11y = initA11yPanel({ tts });
@@ -43,7 +53,7 @@ ready(() => {
   const newsDialogClose = document.getElementById('news-dialog-close');
   const newsDialogTitle = document.getElementById('news-dialog-title');
   const newsDialogMeta = document.getElementById('news-dialog-meta');
-  const newsDialogExcerpt = document.getElementById('news-dialog-excerpt');
+  const newsDialogContent = document.getElementById('news-dialog-content');
   const newsDialogImage = document.getElementById('news-dialog-image');
   const newsDialogTags = document.getElementById('news-dialog-tags');
   const tickerController = createTickerController(tickerTrack);
@@ -153,12 +163,16 @@ ready(() => {
   }
 
   function openNewsDialog(item, trigger){
-    if (!newsDialog || !item || !newsDialogTitle || !newsDialogMeta || !newsDialogExcerpt || !newsDialogImage || !newsDialogTags) return;
+    if (!newsDialog || !item || !newsDialogTitle || !newsDialogMeta || !newsDialogContent || !newsDialogImage || !newsDialogTags) return;
 
+    a11y?.close?.({ restoreFocus: false });
     lastDialogTrigger = trigger || document.activeElement;
     newsDialogTitle.textContent = item.title;
     newsDialogMeta.textContent = `${item.categoryLabel} • ${item.minutes} хв • ${new Intl.DateTimeFormat('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(item.dateISO))}`;
-    newsDialogExcerpt.textContent = (item.content || [item.excerpt]).join(' ');
+    newsDialogContent.innerHTML = (item.content || [item.excerpt])
+      .filter(Boolean)
+      .map((paragraph) => `<p>${escapeHTML(paragraph)}</p>`)
+      .join('');
     newsDialogImage.src = item.image || '';
     newsDialogImage.alt = item.imageAlt || item.title;
     newsDialogTags.innerHTML = (item.tags || [])
@@ -260,6 +274,10 @@ ready(() => {
     }
   });
 
+  document.addEventListener('a11y:panel-opening', () => {
+    if (newsDialog && !newsDialog.hidden) closeNewsDialog({ restoreFocus: false });
+  });
+
   document.addEventListener('click', (e) => {
     const filterBtn = e.target.closest('[data-filter]');
     if (!filterBtn) return;
@@ -292,7 +310,7 @@ ready(() => {
     setNewsState(target);
     updateClearFiltersVisibility();
 
-    document.getElementById('cards')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('cards')?.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'start' });
     ai?.notify?.('AI: підібрав матеріали за вибраним сценарієм.', 4200);
   });
 
@@ -300,7 +318,6 @@ ready(() => {
     if (newsDialog && !newsDialog.hidden) closeNewsDialog({ restoreFocus: false });
     resetExperienceState();
     syncSharedOverlayState();
-    ai?.reset?.();
     ensureTickerRunning(true);
     updateClearFiltersVisibility();
   });
@@ -481,7 +498,8 @@ function createTickerController(track){
   }
 
   function shouldPauseMotion(){
-    return document.body.classList.contains('motion-paused');
+    return document.body.classList.contains('motion-paused') ||
+      document.body.classList.contains('a11y-task-focus');
   }
 
   function stop(){

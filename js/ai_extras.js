@@ -3,6 +3,16 @@ function storageKey(){
   return `np:readpos:${p}`;
 }
 
+function preferredScrollBehavior(){
+  const motionPref = document.body?.dataset.motionPref;
+  const reduceMotion =
+    motionPref === 'user' ||
+    motionPref === 'auto' ||
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  return reduceMotion ? 'auto' : 'smooth';
+}
+
 export function initAIExtras({ notify } = {}){
   initReadPosition({ notify });
   initA11yAuditUI({ notify });
@@ -280,7 +290,7 @@ function renderAudit(issues, { notify } = {}){
       document.querySelectorAll('.a11y-outline-issue').forEach((el) => el.classList.remove('a11y-outline-issue'));
       issue.el.classList.add('a11y-outline-issue');
 
-      try{ issue.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }catch{}
+      try{ issue.el.scrollIntoView({ block: 'center', behavior: preferredScrollBehavior() }); }catch{}
       try{
         if (issue.el && typeof issue.el.focus === 'function'){
           if (!issue.el.matches('a[href], button, input, select, textarea, [tabindex]')){

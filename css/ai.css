@@ -64,7 +64,9 @@ select[aria-invalid="true"]{
 
 /* Reading ruler */
 body.a11y-reading-ruler #main :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
-body.a11y-reading-ruler #main :is(p, li, blockquote):focus-within{
+body.a11y-reading-ruler #main :is(p, li, blockquote):focus-within,
+body.a11y-reading-ruler .news-dialog :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
+body.a11y-reading-ruler .news-dialog :is(p, li, blockquote):focus-within{
   background: color-mix(in oklab, currentColor 8%, transparent);
   border-radius: 10px;
 }
@@ -76,8 +78,28 @@ body.a11y-declutter .hero-media{
   filter: grayscale(0.2) blur(1px);
 }
 
-body.a11y-reading-mode #main :where(p, li, blockquote){
+body.a11y-reading-mode #main :where(p, li, blockquote),
+body.a11y-reading-mode .news-dialog :where(p, li, blockquote){
   max-width:var(--measure);
+}
+
+body.a11y-reading-mode .news-dialog-body{
+  justify-items:center;
+  gap:20px;
+  padding:clamp(20px, 4vw, 36px);
+}
+
+body.a11y-reading-mode .news-dialog-body > :where(h2, p, .news-dialog-content){
+  width:min(100%, var(--measure));
+}
+
+body.a11y-reading-mode .news-dialog-image{
+  max-height:150px;
+  opacity:0.42;
+}
+
+body.a11y-reading-mode .news-dialog-tags{
+  display:none;
 }
 
 body.a11y-reduce-transparency :where(.glass, .site-header, .ticker, .mobile-menu, .backdrop, .ai-indicator){

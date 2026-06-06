@@ -48,6 +48,7 @@ const AUTO_DEFAULTS = {
   thickFocus: null,
   reduceMotion: null,
   readingMode: null,
+  readingRuler: null,
   largeTargetLevel: 0,
   declutter: null,
   reduceTransparency: null,
@@ -184,10 +185,10 @@ function sanitizeAutoState(raw){
   auto.textScale = auto.textScale === null ? null : clamp(auto.textScale, 90, 140, 100);
   auto.lineHeight = auto.lineHeight === null ? null : clamp(auto.lineHeight, 1.4, 2, 1.6);
   auto.letterSpaceEm = auto.letterSpaceEm === null ? null : clamp(auto.letterSpaceEm, 0, 0.12, 0);
-  auto.largeTargetLevel = Math.round(clamp(auto.largeTargetLevel, 0, 2, 0));
+  auto.largeTargetLevel = Math.round(clamp(auto.largeTargetLevel, 0, 3, 0));
   auto.zoomLevel = Math.round(clamp(auto.zoomLevel, 0, 3, 0));
 
-  ['underlineLinks', 'thickFocus', 'reduceMotion', 'readingMode', 'declutter', 'reduceTransparency'].forEach((key) => {
+  ['underlineLinks', 'thickFocus', 'reduceMotion', 'readingMode', 'readingRuler', 'declutter', 'reduceTransparency'].forEach((key) => {
     if (auto[key] !== null) auto[key] = !!auto[key];
   });
   ['simplifyLayout', 'oneColumn'].forEach((key) => {
@@ -227,6 +228,7 @@ function getEffectiveState(state, auto){
     focusAlways: state.focusAlways,
     reduceMotion: pickValue(state, auto, 'reduceMotion'),
     readingMode: pickValue(state, auto, 'readingMode'),
+    readingRuler: !!auto.readingRuler,
     declutter: pickValue(state, auto, 'declutter'),
     reduceTransparency: !!auto.reduceTransparency,
     largeTargetLevel,
@@ -255,6 +257,7 @@ function applyState(state, auto){
   body.classList.toggle('focus-always', !!effective.focusAlways);
   body.classList.toggle('reduce-motion', !!effective.reduceMotion);
   body.classList.toggle('a11y-reading-mode', !!effective.readingMode);
+  body.classList.toggle('a11y-reading-ruler', !!effective.readingRuler);
   body.classList.toggle('a11y-declutter', !!effective.declutter);
   body.classList.toggle('a11y-reduce-transparency', !!effective.reduceTransparency);
   body.classList.toggle('a11y-simplified-layout', !!effective.simplifyLayout);
@@ -369,6 +372,13 @@ export function initA11yPanel({ tts } = {}){
   let untrap = null;
   let resetArmed = false;
   let resetTimer = 0;
+
+  function disarmReset(){
+    resetArmed = false;
+    window.clearTimeout(resetTimer);
+    resetTimer = 0;
+    if (reset) reset.textContent = 'Скинути всі налаштування';
+  }
 
   function announce(text){
     if (!live || !text) return;
@@ -486,6 +496,7 @@ export function initA11yPanel({ tts } = {}){
 
   function open(){
     if (!panel || !backdrop) return;
+    document.dispatchEvent(new CustomEvent('a11y:panel-opening'));
     panel.hidden = false;
     document.body.dataset.a11yPanelOpen = 'true';
     syncSharedOverlayState(backdrop);
@@ -496,7 +507,7 @@ export function initA11yPanel({ tts } = {}){
     document.getElementById('a11y-title')?.focus();
   }
 
-  function close(){
+  function close({ restoreFocus = true } = {}){
     if (!panel || !backdrop) return;
     panel.hidden = true;
     document.body.dataset.a11yPanelOpen = 'false';
@@ -504,7 +515,8 @@ export function initA11yPanel({ tts } = {}){
     fab?.setAttribute('aria-expanded', 'false');
     untrap?.();
     untrap = null;
-    fab?.focus();
+    disarmReset();
+    if (restoreFocus) fab?.focus();
   }
 
   function applyPreset(name){
@@ -545,7 +557,7 @@ export function initA11yPanel({ tts } = {}){
   }
 
   fab?.addEventListener('click', open);
-  closeButtons.forEach((button) => button?.addEventListener('click', close));
+  closeButtons.forEach((button) => button?.addEventListener('click', () => close()));
   backdrop?.addEventListener('click', (e) => {
     if (!panel || panel.hidden) return;
     e.stopImmediatePropagation();
@@ -607,15 +619,12 @@ export function initA11yPanel({ tts } = {}){
       announce('Щоб скинути всі налаштування, натисніть кнопку ще раз.');
       window.clearTimeout(resetTimer);
       resetTimer = window.setTimeout(() => {
-        resetArmed = false;
-        reset.textContent = 'Скинути всі налаштування';
+        disarmReset();
       }, 6000);
       return;
     }
 
-    resetArmed = false;
-    window.clearTimeout(resetTimer);
-    reset.textContent = 'Скинути всі налаштування';
+    disarmReset();
     state = sanitizeState(cloneDefaults());
     autoState = sanitizeAutoState(AUTO_DEFAULTS);
     autoLog = [];

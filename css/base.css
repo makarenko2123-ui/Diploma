@@ -164,7 +164,15 @@ body.motion-paused *::after{
   transition:none !important;
 }
 
-body.motion-paused{
+body.a11y-task-focus *,
+body.a11y-task-focus *::before,
+body.a11y-task-focus *::after{
+  animation-play-state:paused !important;
+  transition:none !important;
+}
+
+body.motion-paused,
+body.a11y-task-focus{
   scroll-behavior:auto !important;
 }
 
@@ -209,13 +217,18 @@ body.a11y-emphasize-click :where(a,button,.nav-pill,.ui-control,[role="button"])
 }
 
 body[data-target-level="1"]{
-  --target-min:52px;
+  --target-min:48px;
   --target-gap:12px;
 }
 
 body[data-target-level="2"]{
-  --target-min:60px;
+  --target-min:54px;
   --target-gap:16px;
+}
+
+body[data-target-level="3"]{
+  --target-min:60px;
+  --target-gap:20px;
 }
 
 body[data-target-level="1"] :where(
@@ -225,13 +238,18 @@ body[data-target-level="1"] :where(
 body[data-target-level="2"] :where(
   button, a[href], input:not([type="radio"]):not([type="checkbox"]),
   select, textarea, summary, [role="button"], [role="switch"], .ui-control
+),
+body[data-target-level="3"] :where(
+  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  select, textarea, summary, [role="button"], [role="switch"], .ui-control
 ){
   min-width:var(--target-min) !important;
   min-height:var(--target-min) !important;
 }
 
 body[data-target-level="1"] a[href],
-body[data-target-level="2"] a[href]{
+body[data-target-level="2"] a[href],
+body[data-target-level="3"] a[href]{
   display:inline-flex;
   align-items:center;
 }
@@ -243,14 +261,24 @@ body[data-target-level="1"] :where(
 body[data-target-level="2"] :where(
   .card-tts-btn, .a11y-fab, .back-to-top, .icon-btn,
   input[type="radio"], input[type="checkbox"]
+),
+body[data-target-level="3"] :where(
+  .card-tts-btn, .a11y-fab, .back-to-top, .icon-btn,
+  input[type="radio"], input[type="checkbox"]
 ){
   min-width:var(--target-min) !important;
   min-height:var(--target-min) !important;
 }
 
 body[data-target-level="1"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions),
-body[data-target-level="2"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions){
+body[data-target-level="2"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions),
+body[data-target-level="3"] :where(.main-nav, .mobile-menu, .quick-actions, .trending, .news-focus-actions, .panel-actions){
   gap:var(--target-gap);
+}
+
+body[data-target-level="3"] :where(a, button, input, select, textarea, summary, [role="button"], [role="switch"], .ui-control){
+  outline:2px solid color-mix(in oklab, var(--glow-strong) 72%, transparent);
+  outline-offset:3px;
 }
 
 /* =========================

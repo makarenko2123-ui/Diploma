@@ -13,7 +13,13 @@ export function initBackToTop(){
   }
 
   btn.addEventListener('click', () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const motionPref = document.body?.dataset.motionPref;
+    const reduceMotion =
+      motionPref === 'user' ||
+      motionPref === 'auto' ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
 
     const topTarget =
       document.querySelector('main') ||

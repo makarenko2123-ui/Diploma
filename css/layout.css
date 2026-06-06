@@ -491,6 +491,10 @@ body.a11y-simplified-layout .hero-card{
   min-height: var(--control-min-h);
 }
 
+.clear-filters-btn[hidden]{
+  display:none;
+}
+
 .clear-filters-btn:hover{
   background: rgba(15,23,42,0.8);
   color: var(--fg);

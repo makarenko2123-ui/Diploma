@@ -14,9 +14,10 @@ function showAIToast(text, timeoutMs = 4500){
     toast.classList.add('show');
 
     window.clearTimeout(showAIToast._timer);
+    window.clearTimeout(showAIToast._hideTimer);
     showAIToast._timer = window.setTimeout(() => {
       toast.classList.remove('show');
-      window.setTimeout(() => { toast.hidden = true; }, 250);
+      showAIToast._hideTimer = window.setTimeout(() => { toast.hidden = true; }, 250);
     }, timeoutMs);
   }
 
@@ -36,6 +37,7 @@ const EMPTY_AUTO = {
   thickFocus: null,
   reduceMotion: null,
   readingMode: null,
+  readingRuler: null,
   largeTargetLevel: 0,
   declutter: null,
   reduceTransparency: null,
@@ -64,7 +66,8 @@ export function initAIAdapt({ a11y } = {}){
     contrast: window.matchMedia?.('(prefers-contrast: more)'),
     forced: window.matchMedia?.('(forced-colors: active)'),
     transparency: window.matchMedia?.('(prefers-reduced-transparency: reduce)'),
-    coarse: window.matchMedia?.('(pointer: coarse)')
+    coarse: window.matchMedia?.('(pointer: coarse)'),
+    dark: window.matchMedia?.('(prefers-color-scheme: dark)')
   };
   const sources = {
     system: {},
@@ -72,7 +75,8 @@ export function initAIAdapt({ a11y } = {}){
     misses: {},
     keyboard: {},
     reading: {},
-    scroll: {}
+    scroll: {},
+    forms: {}
   };
 
   let missTimes = [];
@@ -89,9 +93,15 @@ export function initAIAdapt({ a11y } = {}){
   let articleTimer = 0;
   let articleEl = null;
   let articleScrollEl = null;
+  let articleOpenedAt = 0;
+  let articleNavigationCount = 0;
+  let taskFocusTimer = 0;
+  let invalidTimes = [];
+  let lastInvalidInput = { el: null, time: 0 };
   let lastZoomLevel = 0;
   let lastMode = null;
   let autoSuppressed = false;
+  let autoResumeTimer = 0;
   let baseDpr = window.devicePixelRatio || 1;
   let baseVisualScale = window.visualViewport?.scale || 1;
   let gestureZoomFactor = 1;
@@ -130,6 +140,7 @@ export function initAIAdapt({ a11y } = {}){
       thickFocus: anyTrue('thickFocus') ? true : null,
       reduceMotion: anyTrue('reduceMotion') ? true : null,
       readingMode: anyTrue('readingMode') ? true : null,
+      readingRuler: anyTrue('readingRuler') ? true : null,
       largeTargetLevel: Math.max(0, ...Object.values(sources).map((source) => Number(source.largeTargetLevel || 0))),
       declutter: anyTrue('declutter') ? true : null,
       reduceTransparency: anyTrue('reduceTransparency') ? true : null,
@@ -324,8 +335,9 @@ export function initAIAdapt({ a11y } = {}){
     const motion = !!media.motion?.matches;
     const transparency = !!media.transparency?.matches;
     const coarse = !!media.coarse?.matches;
+    const dark = !!media.dark?.matches;
     const patch = {
-      theme: forced ? 'high-contrast' : null,
+      theme: forced ? 'high-contrast' : (dark ? 'dark' : null),
       underlineLinks: forced || contrast,
       thickFocus: forced || contrast,
       reduceMotion: motion,
@@ -333,7 +345,7 @@ export function initAIAdapt({ a11y } = {}){
       declutter: transparency,
       largeTargetLevel: coarse ? 1 : 0
     };
-    const hasAdjustments = Object.values(patch).some((value) => value === true || value === 'high-contrast' || value === 1);
+    const hasAdjustments = Object.values(patch).some((value) => value === true || value === 'high-contrast' || value === 'dark' || value === 1);
 
     setSource(
       'system',
@@ -384,15 +396,20 @@ export function initAIAdapt({ a11y } = {}){
       return;
     }
 
-    if (count >= 5){
+    if (count >= 8){
+      setSource('misses', {
+        largeTargetLevel: 3,
+        thickFocus: true
+      }, `після ${count} промахів збільшено цілі до 60 × 60px і максимально виділено елементи керування.`);
+    }else if (count >= 5){
       setSource('misses', {
         largeTargetLevel: 2,
         thickFocus: true
-      }, `після ${count} промахів збільшено цілі до 60 × 60px і посилено фокус.`);
+      }, `після ${count} промахів збільшено цілі до 54 × 54px і посилено фокус.`);
     }else if (count >= 3){
       setSource('misses', {
         largeTargetLevel: 1
-      }, `після ${count} промахів збільшено цілі до 52 × 52px.`);
+      }, `після ${count} промахів збільшено цілі до 48 × 48px.`);
     }else{
       setSource('misses', {});
     }
@@ -446,9 +463,9 @@ export function initAIAdapt({ a11y } = {}){
 
     setSource('reading', {
       readingMode: true,
-      textScale: 115,
-      lineHeight: 1.85,
-      letterSpaceEm: 0.01,
+      readingRuler: true,
+      lineHeight: 1.75,
+      letterSpaceEm: 0.005,
       columnWidth: 'narrow',
       reduceMotion: true
     }, `увімкнено комфортне читання: ${reason}.`);
@@ -458,8 +475,10 @@ export function initAIAdapt({ a11y } = {}){
     if (!articleScrollEl || !isSmart() || autoSuppressed) return;
 
     const available = Math.max(1, articleScrollEl.scrollHeight - articleScrollEl.clientHeight);
-    if (articleScrollEl.scrollTop / available >= 0.3){
-      enableReadingAssist('прочитано понад 30% статті');
+    const progress = articleScrollEl.scrollTop / available;
+    const readingTime = performance.now() - articleOpenedAt;
+    if (progress >= 0.25 && readingTime >= 5000){
+      enableReadingAssist('тривале читання та прокручування статті');
     }
   }
 
@@ -468,10 +487,13 @@ export function initAIAdapt({ a11y } = {}){
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleEl = dialog || document.getElementById('news-dialog');
     articleScrollEl = articleEl?.querySelector('.news-dialog-body') || null;
+    articleOpenedAt = performance.now();
+    articleNavigationCount = 0;
     articleScrollEl?.addEventListener('scroll', handleArticleScroll, { passive: true });
+    const textLength = articleScrollEl?.textContent?.trim().length || 0;
     articleTimer = window.setTimeout(() => {
-      enableReadingAssist('стаття відкрита понад 12 секунд');
-    }, 12000);
+      enableReadingAssist('стаття залишається відкритою для тривалого читання');
+    }, textLength >= 300 ? 12000 : 15000);
   }
 
   function closeArticle(){
@@ -479,6 +501,8 @@ export function initAIAdapt({ a11y } = {}){
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleScrollEl = null;
     articleEl = null;
+    articleOpenedAt = 0;
+    articleNavigationCount = 0;
     setSource('reading', {});
   }
 
@@ -488,9 +512,35 @@ export function initAIAdapt({ a11y } = {}){
     const selection = document.getSelection?.();
     const text = selection?.toString()?.trim() || '';
     const anchor = selection?.anchorNode;
-    if (text.length > 100 && anchor && articleEl.contains(anchor)){
-      enableReadingAssist('виділено понад 100 символів');
+    if (text.length > 80 && anchor && articleEl.contains(anchor)){
+      enableReadingAssist('виділено великий фрагмент тексту');
     }
+  }
+
+  function isTypingControl(el){
+    if (!(el instanceof HTMLElement)) return false;
+    if (el instanceof HTMLTextAreaElement) return true;
+    if (!(el instanceof HTMLInputElement)) return false;
+    return ['email', 'password', 'search', 'tel', 'text', 'url'].includes(el.type);
+  }
+
+  function handleTaskFocusIn(e){
+    if (!isTypingControl(e.target)){
+      handleTaskFocusOut();
+      return;
+    }
+    if (!isEnabled()) return;
+    window.clearTimeout(taskFocusTimer);
+    document.body.classList.add('a11y-task-focus');
+  }
+
+  function handleTaskFocusOut(){
+    window.clearTimeout(taskFocusTimer);
+    taskFocusTimer = window.setTimeout(() => {
+      if (!isTypingControl(document.activeElement)){
+        document.body.classList.remove('a11y-task-focus');
+      }
+    }, 80);
   }
 
   function pauseMotionBriefly(){
@@ -515,7 +565,13 @@ export function initAIAdapt({ a11y } = {}){
     sharpScrollTimes = sharpScrollTimes.filter((time) => now - time <= 8000);
     sharpScrollTimes.push(now);
 
-    if (sharpScrollTimes.length >= 3){
+    if (sharpScrollTimes.length >= 5){
+      setSource('scroll', {
+        reduceMotion: true,
+        declutter: true,
+        readingRuler: true
+      }, 'після серії різких прокручувань зменшено рух і прибрано зайвий інформаційний шум.');
+    }else if (sharpScrollTimes.length >= 3){
       setSource('scroll', {
         reduceMotion: true
       }, 'після трьох різких прокручувань стабільно зменшено рух.');
@@ -577,7 +633,11 @@ export function initAIAdapt({ a11y } = {}){
 
     const id = el.id || (el.id = `field_${Math.random().toString(36).slice(2, 9)}`);
     const errorId = `${id}__error`;
-    let error = document.getElementById(errorId);
+    const describedIds = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    let error = describedIds
+      .map((describedId) => document.getElementById(describedId))
+      .find((node) => node?.matches?.('[role="alert"], .a11y-field-error'));
+    error ||= document.getElementById(errorId);
 
     if (!error){
       error = document.createElement('div');
@@ -590,8 +650,47 @@ export function initAIAdapt({ a11y } = {}){
     error.textContent = message;
     el.setAttribute('aria-invalid', 'true');
     const describedBy = new Set((el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
-    describedBy.add(errorId);
+    describedBy.add(error.id);
     el.setAttribute('aria-describedby', Array.from(describedBy).join(' '));
+  }
+
+  function clearInlineErrors(el){
+    const describedIds = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    describedIds
+      .map((id) => document.getElementById(id))
+      .filter((node) => node?.matches?.('[role="alert"], .a11y-field-error'))
+      .forEach((node) => {
+        if (node.id === `${el.id}__error`) node.remove();
+        else node.textContent = '';
+      });
+  }
+
+  function registerInvalidInput(el){
+    if (!isSmart() || autoSuppressed) return;
+
+    const now = performance.now();
+    if (lastInvalidInput.el === el && now - lastInvalidInput.time < 600) return;
+
+    lastInvalidInput = { el, time: now };
+    invalidTimes = invalidTimes.filter((time) => now - time <= 30000);
+    invalidTimes.push(now);
+
+    if (invalidTimes.length >= 2){
+      setSource('forms', {
+        largeTargetLevel: 1,
+        thickFocus: true
+      }, 'після повторних помилок форми збільшено поля та посилено фокус.');
+    }
+  }
+
+  function scheduleAutoResume(durationMs = 10000){
+    window.clearTimeout(autoResumeTimer);
+    autoSuppressed = true;
+    autoResumeTimer = window.setTimeout(() => {
+      autoSuppressed = false;
+      applySystemPrefs();
+      handleZoomChange();
+    }, durationMs);
   }
 
   function clearAutoState({ suppress = false } = {}){
@@ -599,21 +698,39 @@ export function initAIAdapt({ a11y } = {}){
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleEl = null;
     articleScrollEl = null;
+    articleOpenedAt = 0;
+    articleNavigationCount = 0;
     missTimes = [];
     window.clearTimeout(missTimer);
     missTimer = 0;
     tabCount = 0;
     sharpScrollTimes = [];
+    invalidTimes = [];
+    lastInvalidInput = { el: null, time: 0 };
     lastMissInput = { x: 0, y: 0, time: 0, source: '' };
     wheelScroll = { delta: 0, direction: 0, startedAt: 0, lastAt: 0 };
     lastSharpInput = { direction: 0, time: 0 };
     window.clearTimeout(motionPauseTimer);
     motionPauseTimer = 0;
+    window.clearTimeout(taskFocusTimer);
+    taskFocusTimer = 0;
+    document.body.classList.remove('a11y-task-focus');
     document.body.classList.remove('motion-paused');
     decisionCache.clear();
     clearSources();
-    autoSuppressed = suppress;
+    window.clearTimeout(autoResumeTimer);
+    autoResumeTimer = 0;
+    autoSuppressed = false;
+    if (suppress) scheduleAutoResume();
     lastZoomLevel = zoomLevelFromFactor(getZoomFactor());
+  }
+
+  function restartAutoState(){
+    clearAutoState();
+    if (!isEnabled()) return;
+
+    applySystemPrefs();
+    handleZoomChange();
   }
 
   function handleModeChange(force = false){
@@ -644,15 +761,32 @@ export function initAIAdapt({ a11y } = {}){
     handlePotentialMiss(e, 'click');
   }, true);
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Tab' || !isSmart() || autoSuppressed) return;
-    tabCount += 1;
-    syncKeyboardAssist();
+    if (e.key === 'Tab' && isSmart() && !autoSuppressed){
+      tabCount += 1;
+      syncKeyboardAssist();
+    }
+
+    if (articleEl && ['ArrowDown', 'PageDown', ' '].includes(e.key)){
+      articleNavigationCount += 1;
+      if (articleNavigationCount >= 3 && performance.now() - articleOpenedAt >= 2500){
+        enableReadingAssist('послідовно використано клавіатуру для читання статті');
+      }
+    }
   }, true);
+  document.querySelectorAll('input, textarea').forEach((control) => {
+    control.addEventListener('focus', handleTaskFocusIn);
+    control.addEventListener('blur', handleTaskFocusOut);
+  });
+  document.addEventListener('focus', handleTaskFocusIn, true);
+  document.addEventListener('input', handleTaskFocusIn, true);
   document.addEventListener('selectionchange', handleSelection);
   document.addEventListener('news:dialog-opened', (e) => openArticle(e.detail?.dialog));
   document.addEventListener('news:dialog-closed', closeArticle);
   document.addEventListener('a11y:auto-clear', () => clearAutoState({ suppress: true }));
-  document.addEventListener('a11y:reset-all', () => clearAutoState({ suppress: true }));
+  document.addEventListener('a11y:reset-all', restartAutoState);
+  document.addEventListener('change', (e) => {
+    if (e.target?.id === 'ai-mode') handleModeChange();
+  });
 
   window.addEventListener('scroll', handleSharpScroll, { passive: true });
   window.addEventListener('resize', () => startZoomMonitor(), { passive: true });
@@ -686,6 +820,7 @@ export function initAIAdapt({ a11y } = {}){
     const el = e.target;
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
     ensureInlineError(el, el.validationMessage || 'Перевірте це поле.');
+    registerInvalidInput(el);
   }, true);
   document.addEventListener('input', (e) => {
     const el = e.target;
@@ -694,8 +829,11 @@ export function initAIAdapt({ a11y } = {}){
       return;
     }
     el.removeAttribute('aria-invalid');
-    const error = document.getElementById(`${el.id}__error`);
-    if (error) error.remove();
+    clearInlineErrors(el);
+    if (!document.querySelector('[aria-invalid="true"]')){
+      invalidTimes = [];
+      setSource('forms', {});
+    }
   }, true);
 
   const observer = new MutationObserver(() => handleModeChange());
@@ -708,6 +846,6 @@ export function initAIAdapt({ a11y } = {}){
 
   return {
     notify: showAIToast,
-    reset: () => clearAutoState({ suppress: true })
+    reset: restartAutoState
   };
 }

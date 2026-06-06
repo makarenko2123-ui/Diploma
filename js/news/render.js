@@ -37,7 +37,9 @@ function escapeSvgText(str){
   return String(str)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 }
 
 function buildFallbackImage(item){

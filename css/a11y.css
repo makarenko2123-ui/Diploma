@@ -247,12 +247,64 @@ body.dialog-open{
 /* Make native controls dark inside the panel */
 #a11y-panel{
   color-scheme: light dark;
+  font-size:16px;
+  line-height:1.45;
+  letter-spacing:normal;
 }
 
 #a11y-panel select,
 #a11y-panel input,
 #a11y-panel button{
   color: var(--fg);
+  font-size:0.95em;
+}
+
+#a11y-panel h2{
+  font-size:1.35em;
+  line-height:1.2;
+}
+
+#a11y-panel :where(button, input:not([type="radio"]):not([type="checkbox"]), select, textarea, .ui-control){
+  min-width:0 !important;
+  min-height:42px !important;
+}
+
+#a11y-panel :where(input[type="radio"], input[type="checkbox"]){
+  width:20px !important;
+  height:20px !important;
+  min-width:20px !important;
+  min-height:20px !important;
+  flex:0 0 20px;
+}
+
+#a11y-panel fieldset > label:not(.field){
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:30px;
+}
+
+#a11y-panel .icon-btn{
+  width:44px !important;
+  height:44px !important;
+  min-width:44px !important;
+  min-height:44px !important;
+  padding:0;
+  justify-content:center;
+}
+
+#a11y-panel .panel-actions{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+}
+
+#a11y-panel .panel-actions button{
+  width:auto !important;
+  justify-content:center;
+}
+
+#a11y-panel :where(a, button, input, select, textarea, [role="button"], [role="switch"], .ui-control):not(:focus-visible){
+  outline:none;
 }
 
 #a11y-panel select{
@@ -304,6 +356,7 @@ body.dialog-open{
 
   .panel-actions{
     flex-direction:column;
+    grid-template-columns:1fr;
     padding-left:calc(16px + env(safe-area-inset-left));
     padding-right:calc(16px + env(safe-area-inset-right));
   }
