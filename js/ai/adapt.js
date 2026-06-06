@@ -95,6 +95,8 @@ export function initAIAdapt({ a11y } = {}){
   let articleScrollEl = null;
   let articleOpenedAt = 0;
   let articleNavigationCount = 0;
+  let readingCurrentEl = null;
+  let touchGesture = { active: false, startY: 0, startedAt: 0, inArticle: false };
   let taskFocusTimer = 0;
   let invalidTimes = [];
   let lastInvalidInput = { el: null, time: 0 };
@@ -334,7 +336,6 @@ export function initAIAdapt({ a11y } = {}){
     const contrast = !!media.contrast?.matches;
     const motion = !!media.motion?.matches;
     const transparency = !!media.transparency?.matches;
-    const coarse = !!media.coarse?.matches;
     const dark = !!media.dark?.matches;
     const patch = {
       theme: forced ? 'high-contrast' : (dark ? 'dark' : null),
@@ -343,7 +344,7 @@ export function initAIAdapt({ a11y } = {}){
       reduceMotion: motion,
       reduceTransparency: transparency || forced,
       declutter: transparency,
-      largeTargetLevel: coarse ? 1 : 0
+      largeTargetLevel: 0
     };
     const hasAdjustments = Object.values(patch).some((value) => value === true || value === 'high-contrast' || value === 'dark' || value === 1);
 
@@ -469,10 +470,46 @@ export function initAIAdapt({ a11y } = {}){
       columnWidth: 'narrow',
       reduceMotion: true
     }, `увімкнено комфортне читання: ${reason}.`);
+    syncReadingCurrent();
+  }
+
+  function setReadingCurrent(el){
+    if (readingCurrentEl === el) return;
+    readingCurrentEl?.classList.remove('a11y-reading-current');
+    readingCurrentEl = el || null;
+    readingCurrentEl?.classList.add('a11y-reading-current');
+  }
+
+  function syncReadingCurrent(){
+    if (!articleScrollEl) return;
+    const candidates = Array.from(articleScrollEl.querySelectorAll('#news-dialog-content p'));
+    if (!candidates.length) return;
+
+    const scrollRect = articleScrollEl.getBoundingClientRect();
+    const readingLine = scrollRect.top + (scrollRect.height * 0.38);
+    const nearest = candidates.reduce((best, el) => {
+      const rect = el.getBoundingClientRect();
+      const center = rect.top + (rect.height / 2);
+      const distance = Math.abs(center - readingLine);
+      return !best || distance < best.distance ? { el, distance } : best;
+    }, null);
+
+    setReadingCurrent(nearest?.el);
+  }
+
+  function handleArticlePointer(e){
+    if (e.pointerType && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    setReadingCurrent(e.target.closest?.('#news-dialog-content p, #news-dialog-title'));
+  }
+
+  function handleArticleTouchStart(e){
+    setReadingCurrent(e.target.closest?.('#news-dialog-content p, #news-dialog-title'));
   }
 
   function handleArticleScroll(){
-    if (!articleScrollEl || !isSmart() || autoSuppressed) return;
+    if (!articleScrollEl) return;
+    syncReadingCurrent();
+    if (!isSmart() || autoSuppressed) return;
 
     const available = Math.max(1, articleScrollEl.scrollHeight - articleScrollEl.clientHeight);
     const progress = articleScrollEl.scrollTop / available;
@@ -490,6 +527,9 @@ export function initAIAdapt({ a11y } = {}){
     articleOpenedAt = performance.now();
     articleNavigationCount = 0;
     articleScrollEl?.addEventListener('scroll', handleArticleScroll, { passive: true });
+    articleScrollEl?.addEventListener('pointerup', handleArticlePointer, { passive: true });
+    articleScrollEl?.addEventListener('touchstart', handleArticleTouchStart, { passive: true });
+    syncReadingCurrent();
     const textLength = articleScrollEl?.textContent?.trim().length || 0;
     articleTimer = window.setTimeout(() => {
       enableReadingAssist('стаття залишається відкритою для тривалого читання');
@@ -499,10 +539,13 @@ export function initAIAdapt({ a11y } = {}){
   function closeArticle(){
     clearArticleTimer();
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
+    articleScrollEl?.removeEventListener('pointerup', handleArticlePointer);
+    articleScrollEl?.removeEventListener('touchstart', handleArticleTouchStart);
     articleScrollEl = null;
     articleEl = null;
     articleOpenedAt = 0;
     articleNavigationCount = 0;
+    setReadingCurrent(null);
     setSource('reading', {});
   }
 
@@ -586,9 +629,42 @@ export function initAIAdapt({ a11y } = {}){
     const direction = Math.sign(y - lastScroll.y) || 1;
     lastScroll = { y, time: now };
 
+    if (media.coarse?.matches) return;
     if (distance < 180 || distance / elapsed <= 1.45) return;
 
     registerSharpScroll(direction);
+  }
+
+  function handleTouchStart(e){
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    touchGesture = {
+      active: true,
+      startY: touch.clientY,
+      startedAt: performance.now(),
+      inArticle: !!e.target.closest?.('.news-dialog-body')
+    };
+    if (touchGesture.inArticle) handleArticleTouchStart(e);
+  }
+
+  function handleTouchEnd(e){
+    if (!touchGesture.active) return;
+    const touch = e.changedTouches?.[0];
+    const elapsed = performance.now() - touchGesture.startedAt;
+    const distance = touch ? touchGesture.startY - touch.clientY : 0;
+    const inArticle = touchGesture.inArticle;
+    touchGesture.active = false;
+
+    if (inArticle){
+      syncReadingCurrent();
+      if (Math.abs(distance) >= 120 && performance.now() - articleOpenedAt >= 5000){
+        enableReadingAssist('після тривалого читання виконано вертикальний свайп у статті');
+      }
+      return;
+    }
+
+    if (Math.abs(distance) < 180 || elapsed > 750) return;
+    registerSharpScroll(Math.sign(distance) || 1);
   }
 
   function handleWheelScroll(e){
@@ -700,6 +776,8 @@ export function initAIAdapt({ a11y } = {}){
     articleScrollEl = null;
     articleOpenedAt = 0;
     articleNavigationCount = 0;
+    setReadingCurrent(null);
+    touchGesture = { active: false, startY: 0, startedAt: 0, inArticle: false };
     missTimes = [];
     window.clearTimeout(missTimer);
     missTimer = 0;
@@ -789,6 +867,12 @@ export function initAIAdapt({ a11y } = {}){
   });
 
   window.addEventListener('scroll', handleSharpScroll, { passive: true });
+  window.addEventListener('touchstart', handleTouchStart, { passive: true });
+  window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('touchcancel', () => {
+    touchGesture.active = false;
+    touchGesture.inArticle = false;
+  }, { passive: true });
   window.addEventListener('resize', () => startZoomMonitor(), { passive: true });
   window.addEventListener('orientationchange', () => {
     window.setTimeout(resetZoomBaseline, 250);

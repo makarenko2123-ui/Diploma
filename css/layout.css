@@ -176,6 +176,8 @@
     padding:12px calc(14px + env(safe-area-inset-right)) 16px calc(14px + env(safe-area-inset-left));
     max-height:min(60dvh, 460px);
     overflow:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
   }
 
   .hero-media img{
@@ -483,7 +485,7 @@ body.a11y-simplified-layout .hero-card{
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid rgba(148,163,184,0.55);
-  background: rgba(15,23,42,0.6);
+  background: var(--surface);
   color: var(--muted);
   cursor: pointer;
   font-size: 0.9rem;
@@ -495,12 +497,14 @@ body.a11y-simplified-layout .hero-card{
   display:none;
 }
 
-.clear-filters-btn:hover{
-  background: rgba(15,23,42,0.8);
-  color: var(--fg);
-  border-color: rgba(148,163,184,0.7);
-}
-
 .clear-filters-btn:active{
   transform: translateY(1px);
+}
+
+@media (hover:hover) and (pointer:fine){
+  .clear-filters-btn:hover{
+    background: var(--accent-soft);
+    color: var(--fg);
+    border-color: rgba(148,163,184,0.7);
+  }
 }

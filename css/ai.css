@@ -21,6 +21,7 @@
   transform: translateY(20px);
   transition: opacity 0.35s ease, transform 0.35s ease;
   z-index: 9999;
+  pointer-events:none;
 }
 .ai-indicator[hidden]{ display:none; }
 
@@ -63,12 +64,26 @@ select[aria-invalid="true"]{
 }
 
 /* Reading ruler */
-body.a11y-reading-ruler #main :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
 body.a11y-reading-ruler #main :is(p, li, blockquote):focus-within,
-body.a11y-reading-ruler .news-dialog :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
-body.a11y-reading-ruler .news-dialog :is(p, li, blockquote):focus-within{
+body.a11y-reading-ruler .news-dialog :is(p, li, blockquote):focus-within,
+body.a11y-reading-ruler .a11y-reading-current,
+body.a11y-reading-mode .a11y-reading-current{
   background: color-mix(in oklab, currentColor 8%, transparent);
   border-radius: 10px;
+}
+
+body.a11y-reading-ruler .a11y-reading-current,
+body.a11y-reading-mode .a11y-reading-current{
+  box-shadow:inset 3px 0 0 var(--accent);
+  padding-inline:10px;
+}
+
+@media (hover:hover) and (pointer:fine){
+  body.a11y-reading-ruler #main :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover,
+  body.a11y-reading-ruler .news-dialog :is(p, li, blockquote, h1,h2,h3,h4,h5,h6):hover{
+    background: color-mix(in oklab, currentColor 8%, transparent);
+    border-radius: 10px;
+  }
 }
 
 body.a11y-declutter .ticker{ display:none !important; }
@@ -167,6 +182,14 @@ body.a11y-reduce-transparency :where(.glass, .site-header, .ticker, .mobile-menu
     right:calc(var(--vv-right) + 14px + env(safe-area-inset-right));
     bottom:calc(var(--vv-bottom) + 72px + env(safe-area-inset-bottom));
     width:auto;
+  }
+
+  body.tts-active .back-to-top{
+    display:none !important;
+  }
+
+  body.tts-active .ai-indicator{
+    bottom:calc(var(--vv-bottom) + 250px + env(safe-area-inset-bottom));
   }
 }
 

@@ -32,11 +32,6 @@
     padding .2s ease;
 }
 
-.nav-pill:hover{
-  background-color:var(--accent-soft);
-  border-color:rgba(148,163,184,0.6);
-}
-
 .nav-pill.active{
   background: radial-gradient(
     circle at 20% 0,
@@ -57,7 +52,7 @@
   min-height:44px;
   border-radius:999px;
   border:1px solid rgba(148,163,184,0.7);
-  background:rgba(15,23,42,0.6);
+  background:var(--surface);
   padding:0;
   cursor:pointer;
   touch-action: manipulation;
@@ -264,11 +259,6 @@ body[data-zoom-assist="4"] .back-to-top{
   color: inherit;
   text-decoration: none;
 }
-.news-link:hover{
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .news-link-btn{
   display: inline;
   padding: 0;
@@ -284,6 +274,18 @@ body[data-zoom-assist="4"] .back-to-top{
 
 .news-link-btn:focus-visible{
   border-radius: 8px;
+}
+
+@media (hover:hover) and (pointer:fine){
+  .nav-pill:hover{
+    background-color:var(--accent-soft);
+    border-color:rgba(148,163,184,0.6);
+  }
+
+  .news-link:hover{
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 /* Loading indicator */
@@ -454,6 +456,8 @@ body[data-zoom-assist="4"] .card-body{
   min-height:0;
   overscroll-behavior:contain;
   scrollbar-gutter:stable;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
 }
 
 .news-dialog-image{

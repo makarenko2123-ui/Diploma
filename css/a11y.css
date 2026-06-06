@@ -34,10 +34,6 @@ body[data-zoom-assist="2"] .a11y-fab{
   width:44px;
   height:44px;
 }
-.a11y-fab:hover{
-  transform:translateY(-2px) scale(1.02);
-  box-shadow: var(--fab-shadow);
-}
 .a11y-fab:active{
   transform:translateY(0);
   box-shadow: var(--fab-shadow);
@@ -58,8 +54,18 @@ body[data-zoom-assist="2"] .a11y-fab{
   border:1px solid rgba(148,163,184,0.7);
   transition:opacity .15s ease;
 }
-.a11y-fab:hover .fab-tooltip,
 .a11y-fab:focus-visible .fab-tooltip{opacity:1}
+
+@media (hover:hover) and (pointer:fine){
+  .a11y-fab:hover{
+    transform:translateY(-2px) scale(1.02);
+    box-shadow: var(--fab-shadow);
+  }
+
+  .a11y-fab:hover .fab-tooltip{
+    opacity:1;
+  }
+}
 
 body[data-zoom-assist="2"] .fab-tooltip,
 body[data-zoom-assist="3"] .fab-tooltip,
@@ -109,6 +115,8 @@ body[data-zoom-assist="4"] .fab-tooltip{
   padding:14px 16px 12px;
   overflow:auto;
   flex:1;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
 }
 
 .field{
@@ -364,5 +372,14 @@ body.dialog-open{
   .panel-actions > *{
     width:100%;
     justify-content:center;
+  }
+
+  #a11y-panel fieldset > label:not(.field),
+  #a11y-panel .checkbox{
+    min-height:44px;
+  }
+
+  #a11y-panel .panel-actions button{
+    min-height:48px !important;
   }
 }

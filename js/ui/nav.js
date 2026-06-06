@@ -107,6 +107,17 @@ export function initNav({ onFilter, initialFilter = 'all' } = {}){
       }
     });
 
+    document.addEventListener('pointerdown', (e) => {
+      if (mobile.hidden || mobile.contains(e.target) || burger.contains(e.target)) return;
+      closeMobileMenu({ restoreFocus: false });
+    }, true);
+
+    ['a11y:panel-opening', 'news:dialog-opened'].forEach((eventName) => {
+      document.addEventListener(eventName, () => {
+        if (!mobile.hidden) closeMobileMenu({ restoreFocus: false });
+      });
+    });
+
     window.addEventListener('resize', () => {
       if (window.innerWidth > 700 && !mobile.hidden){
         closeMobileMenu({ restoreFocus: false });
@@ -117,4 +128,6 @@ export function initNav({ onFilter, initialFilter = 'all' } = {}){
   // Initial UI sync without forcing a filter reset.
   setActive(desktop, initialFilter);
   setActive(mobile, initialFilter);
+
+  return { openMobileMenu, closeMobileMenu };
 }

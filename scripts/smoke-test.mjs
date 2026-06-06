@@ -185,6 +185,45 @@ async function reload(){
   await loaded;
 }
 
+async function tapPoint(x, y){
+  const point = { x: Math.round(x), y: Math.round(y), id: 1, radiusX: 2, radiusY: 2, force: 1 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await delay(45);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await delay(80);
+}
+
+async function tapSelector(selector){
+  const point = await cdp.evaluate((targetSelector) => {
+    const el = document.querySelector(targetSelector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + (rect.width / 2), y: rect.top + (rect.height / 2) };
+  }, selector);
+  assert.ok(point, `Touch target not found: ${selector}`);
+  await tapPoint(point.x, point.y);
+}
+
+async function swipe(from, to, durationMs = 280, steps = 6){
+  const start = { x: Math.round(from.x), y: Math.round(from.y), id: 1, radiusX: 4, radiusY: 4, force: 1 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+  for (let index = 1; index <= steps; index += 1){
+    const progress = index / steps;
+    const point = {
+      x: Math.round(from.x + ((to.x - from.x) * progress)),
+      y: Math.round(from.y + ((to.y - from.y) * progress)),
+      id: 1,
+      radiusX: 4,
+      radiusY: 4,
+      force: 1
+    };
+    await delay(Math.max(16, Math.round(durationMs / steps)));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await delay(180);
+}
+
 async function run(name, test){
   try{
     await test();
@@ -881,9 +920,11 @@ try{
       deviceScaleFactor: 1,
       mobile: true
     });
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     await delay(350);
     assert.equal(await cdp.evaluate(() => document.body.dataset.zoomAssist), '0');
-    await cdp.evaluate(() => document.getElementById('menu-toggle').click());
+    assert.equal(await cdp.evaluate(() => document.body.dataset.targetLevel), '0');
+    await tapSelector('#menu-toggle');
     assert.equal(await cdp.evaluate(() => document.getElementById('mobile-menu').hidden), false);
     const escapeState = await cdp.evaluate(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -893,14 +934,248 @@ try{
       };
     });
     assert.deepEqual(escapeState, { hidden: true, focusReturned: true });
-    await cdp.evaluate(() => document.getElementById('menu-toggle').click());
-    await cdp.evaluate(() => document.querySelector('#mobile-menu [data-filter="sport"]').click());
+    await tapSelector('#menu-toggle');
+    await tapSelector('#mobile-menu [data-filter="sport"]');
     await waitFor(() => document.querySelectorAll('[data-news-item]').length === 4, 'Mobile menu filter did not render four cards.');
     assert.equal(await cdp.evaluate(() => document.getElementById('mobile-menu').hidden), true);
     assert.equal(
       await cdp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
       true
     );
+    await cdp.evaluate(() => document.getElementById('clear-filters').click());
+  });
+
+  await run('real touch controls and outside menu close work', async () => {
+    await tapSelector('#menu-toggle');
+    assert.equal(await cdp.evaluate(() => document.getElementById('mobile-menu').hidden), false, 'Touch did not open mobile menu.');
+    await tapSelector('#a11y-toggle');
+    assert.equal(await cdp.evaluate(() => document.getElementById('mobile-menu').hidden), true, 'Opening accessibility panel did not close mobile menu.');
+    assert.equal(await cdp.evaluate(() => document.getElementById('a11y-panel').hidden), false, 'Touch did not open accessibility panel.');
+    await tapSelector('[data-preset="reading"]');
+    assert.equal(await cdp.evaluate(() => document.body.classList.contains('a11y-reading-mode')), true, 'Touch did not apply reading preset.');
+    await tapSelector('#a11y-close2');
+
+    await cdp.evaluate(() => {
+      const trigger = document.querySelector('[data-open-news]');
+      trigger.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
+    await delay(250);
+    await tapSelector('[data-open-news]');
+    assert.equal(await cdp.evaluate(() => document.getElementById('news-dialog').hidden), false, 'Touch did not open news dialog.');
+    await cdp.evaluate(() => {
+      const paragraph = document.querySelector('#news-dialog-content p');
+      paragraph.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
+    await delay(180);
+    await tapSelector('#news-dialog-content p');
+    assert.equal(await cdp.evaluate(() => !!document.querySelector('#news-dialog-content .a11y-reading-current')), true, 'Touch did not select the current reading paragraph.');
+    await tapSelector('#news-dialog-close');
+
+    const overlayState = await cdp.evaluate(() => ({
+      toastPointerEvents: getComputedStyle(document.getElementById('ai-indicator')).pointerEvents,
+      dialogClosed: document.getElementById('news-dialog').hidden,
+      panelClosed: document.getElementById('a11y-panel').hidden
+    }));
+    assert.deepEqual(overlayState, { toastPointerEvents: 'none', dialogClosed: true, panelClosed: true });
+
+    await cdp.evaluate(() => {
+      document.getElementById('a11y-toggle').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-close2').click();
+      window.scrollTo(0, 0);
+    });
+  });
+
+  await run('mobile touch misses and swipes adapt without false repeats', async () => {
+    const missPoint = await cdp.evaluate(() => {
+      const rect = document.getElementById('a11y-toggle').getBoundingClientRect();
+      return { x: rect.left - 7, y: rect.top + (rect.height / 2) };
+    });
+    await tapPoint(missPoint.x, missPoint.y);
+    await tapPoint(missPoint.x, missPoint.y);
+    await tapPoint(missPoint.x, missPoint.y);
+    assert.equal(await cdp.evaluate(() => document.body.dataset.targetLevel), '1');
+
+    await cdp.evaluate(() => {
+      document.getElementById('a11y-toggle').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-close2').click();
+      window.scrollTo(0, 0);
+    });
+    await swipe({ x: 195, y: 720 }, { x: 195, y: 260 });
+    assert.equal(await cdp.evaluate(() => document.body.classList.contains('reduce-motion')), false);
+    await delay(240);
+    await swipe({ x: 195, y: 720 }, { x: 195, y: 260 });
+    await delay(240);
+    await swipe({ x: 195, y: 720 }, { x: 195, y: 260 });
+    await waitFor(() => document.body.classList.contains('reduce-motion'), 'Three deliberate mobile swipes did not enable motion reduction.');
+
+    await cdp.evaluate(() => {
+      document.getElementById('a11y-toggle').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-close2').click();
+      window.scrollTo(0, 0);
+    });
+  });
+
+  await run('mobile sepia controls remain visible and panel targets are touch-sized', async () => {
+    const state = await cdp.evaluate(() => {
+      document.getElementById('a11y-toggle').click();
+      const sepia = document.querySelector('input[name="theme"][value="sepia"]');
+      sepia.checked = true;
+      sepia.dispatchEvent(new Event('change', { bubbles: true }));
+      const label = document.querySelector('#a11y-panel fieldset label').getBoundingClientRect();
+      const action = document.getElementById('a11y-close2').getBoundingClientRect();
+      document.getElementById('a11y-close2').click();
+      const burgerStyle = getComputedStyle(document.getElementById('menu-toggle'));
+      const clearStyle = getComputedStyle(document.getElementById('clear-filters'));
+      return {
+        labelHeight: label.height,
+        actionHeight: action.height,
+        burgerBackground: burgerStyle.backgroundColor,
+        burgerForeground: burgerStyle.getPropertyValue('--fg').trim(),
+        clearBackground: clearStyle.backgroundColor,
+        surface: burgerStyle.getPropertyValue('--surface').trim()
+      };
+    });
+    assert.ok(state.labelHeight >= 44);
+    assert.ok(state.actionHeight >= 48);
+    assert.notEqual(state.burgerBackground, 'rgba(15, 23, 42, 0.6)');
+    assert.notEqual(state.clearBackground, 'rgba(15, 23, 42, 0.6)');
+
+    await cdp.evaluate(() => {
+      document.getElementById('a11y-toggle').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-reset').click();
+      document.getElementById('a11y-close2').click();
+    });
+  });
+
+  await run('mobile reading mode activates after meaningful touch reading', async () => {
+    await cdp.evaluate(() => {
+      if (!document.getElementById('news-dialog').hidden) document.getElementById('news-dialog-close').click();
+      if (!document.getElementById('a11y-panel').hidden) document.getElementById('a11y-close2').click();
+      const trigger = document.querySelector('[data-open-news]');
+      trigger.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
+    await delay(250);
+    await tapSelector('[data-open-news]');
+    assert.equal(await cdp.evaluate(() => document.getElementById('news-dialog').hidden), false, 'Touch did not open article for mobile reading test.');
+    await delay(5100);
+    const swipeArea = await cdp.evaluate(() => {
+      const rect = document.querySelector('.news-dialog-body').getBoundingClientRect();
+      return {
+        from: { x: rect.left + (rect.width / 2), y: rect.bottom - 35 },
+        to: { x: rect.left + (rect.width / 2), y: rect.top + 70 }
+      };
+    });
+    await swipe(swipeArea.from, swipeArea.to, 420, 8);
+    await delay(500);
+    const state = await cdp.evaluate(() => {
+      const body = document.querySelector('.news-dialog-body');
+      return {
+        readingMode: document.body.classList.contains('a11y-reading-mode'),
+        progress: body.scrollTop / Math.max(1, body.scrollHeight - body.clientHeight),
+        scrollTop: body.scrollTop,
+        scrollHeight: body.scrollHeight,
+        clientHeight: body.clientHeight,
+        dialogOpen: !document.getElementById('news-dialog').hidden,
+        ruler: document.body.classList.contains('a11y-reading-ruler'),
+        currentParagraph: !!document.querySelector('#news-dialog-content .a11y-reading-current')
+      };
+    });
+    assert.equal(state.readingMode, true, JSON.stringify(state));
+    assert.deepEqual({
+      ruler: state.ruler,
+      currentParagraph: state.currentParagraph
+    }, {
+      ruler: true,
+      currentParagraph: true
+    });
+    await tapSelector('#news-dialog-close');
+    assert.equal(await cdp.evaluate(() => document.body.classList.contains('a11y-reading-mode')), false);
+  });
+
+  await run('mobile pinch zoom adapts the visual viewport', async () => {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.5 });
+    await waitFor(() => document.body.dataset.zoomAssist === '2', 'Mobile page-scale zoom did not enable level-two assistance.');
+    await cdp.evaluate(() => document.getElementById('a11y-toggle').click());
+    const state = await cdp.evaluate(() => {
+      const panel = document.getElementById('a11y-panel');
+      const rect = panel.getBoundingClientRect();
+      return {
+        panelOpen: !panel.hidden,
+        panelFitsVisualWidth: rect.width <= window.visualViewport.width + 1,
+        panelNoHorizontalOverflow: panel.scrollWidth <= panel.clientWidth + 1,
+        scale: window.visualViewport.scale
+      };
+    });
+    await cdp.evaluate(() => document.getElementById('a11y-close2').click());
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await waitFor(() => document.body.dataset.zoomAssist === '0', 'Mobile page-scale reset did not clear zoom assistance.');
+    assert.equal(state.panelOpen, true, JSON.stringify(state));
+    assert.equal(state.panelFitsVisualWidth, true, JSON.stringify(state));
+    assert.equal(state.panelNoHorizontalOverflow, true, JSON.stringify(state));
+    assert.ok(state.scale >= 1.45, JSON.stringify(state));
+  });
+
+  await run('mobile landscape keeps core controls reachable', async () => {
+    await cdp.evaluate(() => {
+      const panel = document.getElementById('a11y-panel');
+      const dialog = document.getElementById('news-dialog');
+      if (panel && !panel.hidden) document.getElementById('a11y-close2').click();
+      if (dialog && !dialog.hidden) document.getElementById('news-dialog-close').click();
+    });
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 844,
+      height: 390,
+      deviceScaleFactor: 1,
+      mobile: true,
+      screenOrientation: { angle: 90, type: 'landscapePrimary' }
+    });
+    await delay(300);
+    await cdp.evaluate(() => document.getElementById('a11y-toggle').click());
+    const panelState = await cdp.evaluate(() => {
+      const panel = document.getElementById('a11y-panel');
+      const actions = panel.querySelector('.panel-actions').getBoundingClientRect();
+      return {
+        open: !panel.hidden,
+        actionsVisible: actions.top >= -1 && actions.bottom <= window.innerHeight + 1,
+        noHorizontalOverflow: panel.scrollWidth <= panel.clientWidth + 1
+      };
+    });
+    if (panelState.open) await cdp.evaluate(() => document.getElementById('a11y-close2').click());
+    assert.deepEqual(panelState, { open: true, actionsVisible: true, noHorizontalOverflow: true }, JSON.stringify(panelState));
+
+    await cdp.evaluate(() => {
+      const trigger = document.querySelector('[data-open-news]');
+      trigger.scrollIntoView({ block: 'center' });
+    });
+    await delay(100);
+    await cdp.evaluate(() => document.querySelector('[data-open-news]').click());
+    const dialogState = await cdp.evaluate(() => {
+      const dialog = document.getElementById('news-dialog');
+      const close = document.getElementById('news-dialog-close').getBoundingClientRect();
+      return {
+        open: !dialog.hidden,
+        closeVisible: close.top >= -1 && close.bottom <= window.innerHeight + 1,
+        bodyScrollable: document.querySelector('.news-dialog-body').scrollHeight > document.querySelector('.news-dialog-body').clientHeight
+      };
+    });
+    if (dialogState.open) await cdp.evaluate(() => document.getElementById('news-dialog-close').click());
+    assert.deepEqual(dialogState, { open: true, closeVisible: true, bodyScrollable: true }, JSON.stringify(dialogState));
+
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+      screenOrientation: { angle: 0, type: 'portraitPrimary' }
+    });
+    await delay(250);
   });
 
   await run('browser zoom gesture still adapts layout', async () => {
