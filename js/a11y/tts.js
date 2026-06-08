@@ -63,7 +63,7 @@ export function initTTS(){
     window.setTimeout(() => { live.textContent = text; }, 20);
   }
 
-  function setRate(rate, { emit = false } = {}){
+  function setRate(rate, { emit = false, restartActive = true } = {}){
     const next = Math.max(0.7, Math.min(1.4, Number(rate) || 1));
     if (panelRate) panelRate.value = String(next);
     if (playerRate) playerRate.value = String(next);
@@ -74,6 +74,11 @@ export function initTTS(){
 
     if (emit){
       document.dispatchEvent(new CustomEvent('tts:rate-change', { detail: { rate: next } }));
+    }
+    if (restartActive && currentText && playbackState !== 'idle'){
+      const text = currentText;
+      speak(text, { announceStart: false });
+      announce('Швидкість змінено. Озвучення перезапущено.');
     }
   }
 
@@ -151,19 +156,12 @@ export function initTTS(){
 
   function bindInterruptors(){
     clearInterruptors();
-    const interrupt = () => {
-      if (playbackState !== 'idle') stop({ announceStop: true });
-    };
     const onVisibilityChange = () => {
-      if (document.hidden) interrupt();
+      if (document.hidden && playbackState !== 'idle') stop({ announceStop: true });
     };
 
     interruptors = [
-      { target: window, type: 'scroll', handler: interrupt, options: { passive: true } },
-      { target: window, type: 'wheel', handler: interrupt, options: { passive: true } },
-      { target: window, type: 'touchmove', handler: interrupt, options: { passive: true } },
-      { target: document, type: 'visibilitychange', handler: onVisibilityChange },
-      { target: document.querySelector('.news-dialog-body'), type: 'scroll', handler: interrupt, options: { passive: true } }
+      { target: document, type: 'visibilitychange', handler: onVisibilityChange }
     ].filter(({ target }) => target);
 
     interruptors.forEach(({ target, type, handler, options }) => {
@@ -171,7 +169,7 @@ export function initTTS(){
     });
   }
 
-  function speak(text){
+  function speak(text, { announceStart = true } = {}){
     const normalized = String(text || '').replace(/\s+/g, ' ').trim();
     if (!supported || !normalized) return false;
 
@@ -210,7 +208,7 @@ export function initTTS(){
     bindInterruptors();
     updatePlayer('speaking', 'Запуск...');
     synth.speak(utterance);
-    announce('Озвучення розпочато.');
+    if (announceStart) announce('Озвучення розпочато.');
     return true;
   }
 
@@ -243,15 +241,25 @@ export function initTTS(){
   stopBtn?.addEventListener('click', () => stop({ announceStop: true }));
   panelRate?.addEventListener('input', () => setRate(panelRate.value));
   playerRate?.addEventListener('input', () => setRate(playerRate.value, { emit: true }));
+  voiceSelect?.addEventListener('change', () => {
+    if (!currentText || playbackState === 'idle') return;
+    const text = currentText;
+    speak(text, { announceStart: false });
+    announce('Голос змінено. Озвучення перезапущено.');
+  });
 
   if (supported){
-    setRate(readSavedRate());
+    setRate(readSavedRate(), { restartActive: false });
     loadVoices();
     synth.addEventListener?.('voiceschanged', loadVoices);
   }else{
-    if (voiceSelect) voiceSelect.innerHTML = '<option>Недоступно у цьому браузері</option>';
-    [sampleBtn, pauseBtn, resumeBtn, stopBtn].forEach((button) => {
-      if (button) button.disabled = true;
+    if (voiceSelect){
+      const option = document.createElement('option');
+      option.textContent = 'Недоступно у цьому браузері';
+      voiceSelect.replaceChildren(option);
+    }
+    [voiceSelect, panelRate, playerRate, sampleBtn, pauseBtn, resumeBtn, stopBtn].forEach((control) => {
+      if (control) control.disabled = true;
     });
   }
 

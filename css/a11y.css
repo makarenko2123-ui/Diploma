@@ -222,8 +222,15 @@ body[data-zoom-assist="4"] .fab-tooltip{
 }
 
 /* Scroll lock when dialog open */
+html.dialog-open,
 body.dialog-open{
   overflow:hidden;
+  overscroll-behavior:none;
+}
+
+body.dialog-open > :where(.a11y-fab, .back-to-top, .tts-player, .ai-indicator){
+  visibility:hidden;
+  pointer-events:none;
 }
 
 /* A11Y focus helpers */

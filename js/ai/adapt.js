@@ -43,10 +43,21 @@ const EMPTY_AUTO = {
   reduceTransparency: null,
   zoomLevel: 0,
   simplifyLayout: false,
-  oneColumn: false
+  oneColumn: false,
+  searchAssist: false,
+  lowData: false
 };
 
 export function initAIAdapt({ a11y } = {}){
+  const CONTRAST_MISS_COUNT = 5;
+  const CONTRAST_TAB_COUNT = 3;
+  const CONTRAST_SIGNAL_WINDOW_MS = 45000;
+  const FEED_READING_TIME_MS = 30000;
+  const FEED_READING_EXIT_TIME_MS = 10000;
+  const SHARP_SCROLL_DISTANCE = 200;
+  const SHARP_SCROLL_SPEED = 1.55;
+  const SHARP_SCROLL_REDUCE_COUNT = 4;
+  const SHARP_SCROLL_DECLUTTER_COUNT = 6;
   const INTERACTIVE_SELECTOR = [
     'button',
     'a[href]',
@@ -74,15 +85,25 @@ export function initAIAdapt({ a11y } = {}){
     zoom: {},
     misses: {},
     keyboard: {},
+    contrast: {},
     reading: {},
+    feedReading: {},
     scroll: {},
-    forms: {}
+    forms: {},
+    search: {},
+    network: {},
+    returning: {}
   };
 
   let missTimes = [];
   let missTimer = 0;
   let lastMissInput = { x: 0, y: 0, time: 0, source: '' };
   let tabCount = 0;
+  let tabTimes = [];
+  let feedInteractionTimes = [];
+  let feedVisibleSince = 0;
+  let feedReadingExitSince = 0;
+  let feedReadingTimer = 0;
   let sharpScrollTimes = [];
   let lastScroll = { y: window.scrollY || 0, time: performance.now() };
   let wheelScroll = { delta: 0, direction: 0, startedAt: 0, lastAt: 0 };
@@ -90,24 +111,27 @@ export function initAIAdapt({ a11y } = {}){
   let motionPauseTimer = 0;
   let zoomMonitorTimer = 0;
   let zoomMonitorStopTimer = 0;
-  let articleTimer = 0;
   let articleEl = null;
   let articleScrollEl = null;
   let articleOpenedAt = 0;
   let articleNavigationCount = 0;
+  let currentArticleId = '';
   let readingCurrentEl = null;
   let touchGesture = { active: false, startY: 0, startedAt: 0, inArticle: false };
   let taskFocusTimer = 0;
   let invalidTimes = [];
   let lastInvalidInput = { el: null, time: 0 };
+  let emptySearchAttempts = [];
+  let lastEmptySearch = { query: '', time: 0 };
+  const articlePositions = new Map();
   let lastZoomLevel = 0;
   let lastMode = null;
-  let autoSuppressed = false;
-  let autoResumeTimer = 0;
+  let autoSuppressed = !!a11y?.isAutoPaused?.();
   let baseDpr = window.devicePixelRatio || 1;
   let baseVisualScale = window.visualViewport?.scale || 1;
-  let gestureZoomFactor = 1;
   let lastZoomFingerprint = '';
+  let pendingZoomLevel = 0;
+  let pendingZoomSince = performance.now();
   const decisionCache = new Map();
 
   function isSmart(){
@@ -116,6 +140,10 @@ export function initAIAdapt({ a11y } = {}){
 
   function isEnabled(){
     return mode() !== 'off';
+  }
+
+  function isOverlayOpen(){
+    return document.body?.classList.contains('dialog-open') || false;
   }
 
   function maxNumber(key){
@@ -133,11 +161,11 @@ export function initAIAdapt({ a11y } = {}){
   function combineSources(){
     return {
       ...EMPTY_AUTO,
-      theme: sources.system.theme || null,
+      theme: sources.contrast.theme || sources.system.theme || null,
       textScale: maxNumber('textScale'),
       lineHeight: maxNumber('lineHeight'),
       letterSpaceEm: maxNumber('letterSpaceEm'),
-      columnWidth: sources.reading.columnWidth || sources.zoom.columnWidth || null,
+      columnWidth: sources.reading.columnWidth || sources.feedReading.columnWidth || sources.returning.columnWidth || sources.zoom.columnWidth || null,
       underlineLinks: anyTrue('underlineLinks') ? true : null,
       thickFocus: anyTrue('thickFocus') ? true : null,
       reduceMotion: anyTrue('reduceMotion') ? true : null,
@@ -148,7 +176,9 @@ export function initAIAdapt({ a11y } = {}){
       reduceTransparency: anyTrue('reduceTransparency') ? true : null,
       zoomLevel: Number(sources.zoom.zoomLevel || 0),
       simplifyLayout: anyTrue('simplifyLayout'),
-      oneColumn: anyTrue('oneColumn')
+      oneColumn: anyTrue('oneColumn'),
+      searchAssist: anyTrue('searchAssist'),
+      lowData: anyTrue('lowData')
     };
   }
 
@@ -210,8 +240,7 @@ export function initAIAdapt({ a11y } = {}){
     return Math.max(
       1,
       dpr / baseDpr,
-      visualScale / baseVisualScale,
-      gestureZoomFactor
+      visualScale / baseVisualScale
     );
   }
 
@@ -226,10 +255,7 @@ export function initAIAdapt({ a11y } = {}){
     if (level >= 3){
       return {
         zoomLevel: 3,
-        textScale: 120,
-        lineHeight: 1.85,
         columnWidth: 'narrow',
-        largeTargetLevel: 2,
         simplifyLayout: true,
         oneColumn: true
       };
@@ -237,19 +263,15 @@ export function initAIAdapt({ a11y } = {}){
     if (level === 2){
       return {
         zoomLevel: 2,
-        textScale: 115,
-        lineHeight: 1.75,
         columnWidth: 'narrow',
-        largeTargetLevel: 1,
-        simplifyLayout: true
+        simplifyLayout: true,
+        oneColumn: true
       };
     }
     if (level === 1){
       return {
         zoomLevel: 1,
-        textScale: 105,
-        columnWidth: 'narrow',
-        largeTargetLevel: 1
+        columnWidth: 'narrow'
       };
     }
     return {};
@@ -261,6 +283,13 @@ export function initAIAdapt({ a11y } = {}){
 
     const factor = getZoomFactor();
     const level = zoomLevelFromFactor(factor);
+    const now = performance.now();
+    if (level !== pendingZoomLevel){
+      pendingZoomLevel = level;
+      pendingZoomSince = now;
+      return;
+    }
+    if (now - pendingZoomSince < 180) return;
     if (level === lastZoomLevel && Number(sources.zoom.zoomLevel || 0) === level) return;
 
     lastZoomLevel = level;
@@ -278,14 +307,16 @@ export function initAIAdapt({ a11y } = {}){
       document.documentElement.clientWidth || window.innerWidth || 1,
       viewport?.scale || 1,
       viewport?.width || window.innerWidth || 1,
-      viewport?.height || window.innerHeight || 1,
-      gestureZoomFactor
+      viewport?.height || window.innerHeight || 1
     ].join('|');
   }
 
   function pollZoom(){
     const fingerprint = getZoomFingerprint();
-    if (fingerprint === lastZoomFingerprint) return;
+    if (fingerprint === lastZoomFingerprint){
+      if (pendingZoomLevel !== lastZoomLevel) handleZoomChange();
+      return;
+    }
     lastZoomFingerprint = fingerprint;
     handleZoomChange();
   }
@@ -304,24 +335,13 @@ export function initAIAdapt({ a11y } = {}){
     }, durationMs);
   }
 
-  function updateGestureZoom(deltaY){
-    const magnitude = Math.min(120, Math.abs(Number(deltaY) || 0));
-    if (!magnitude) return;
-
-    const step = 1 + Math.min(0.18, magnitude * 0.002);
-    gestureZoomFactor = deltaY < 0
-      ? Math.min(4, gestureZoomFactor * step)
-      : Math.max(1, gestureZoomFactor / step);
-
-    startZoomMonitor();
-  }
-
   function resetZoomBaseline(){
     baseDpr = window.devicePixelRatio || 1;
     baseVisualScale = window.visualViewport?.scale || 1;
-    gestureZoomFactor = 1;
     lastZoomFingerprint = '';
     lastZoomLevel = 0;
+    pendingZoomLevel = 0;
+    pendingZoomSince = performance.now();
     setSource('zoom', {});
     syncVisualViewport();
   }
@@ -356,9 +376,60 @@ export function initAIAdapt({ a11y } = {}){
     );
   }
 
+  function applyNetworkPrefs({ announce = false } = {}){
+    if (!isEnabled() || autoSuppressed){
+      setSource('network', {});
+      return;
+    }
+
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const effectiveType = String(connection?.effectiveType || '').toLowerCase();
+    const constrained = !!connection?.saveData || ['slow-2g', '2g'].includes(effectiveType);
+
+    setSource(
+      'network',
+      constrained ? {
+        lowData: true,
+        reduceMotion: true,
+        declutter: true,
+        simplifyLayout: true
+      } : {},
+      constrained ? 'через повільне з’єднання або економію даних прибрано важкі візуальні елементи.' : '',
+      { toast: announce && constrained }
+    );
+  }
+
   function pruneMisses(now = performance.now()){
-    missTimes = missTimes.filter((time) => now - time <= 45000);
+    missTimes = missTimes.filter((time) => now - time <= CONTRAST_SIGNAL_WINDOW_MS);
     return missTimes.length;
+  }
+
+  function pruneTabs(now = performance.now()){
+    tabTimes = tabTimes.filter((time) => now - time <= CONTRAST_SIGNAL_WINDOW_MS);
+    return tabTimes.length;
+  }
+
+  function syncContrastAssist(){
+    if (!isSmart() || autoSuppressed){
+      setSource('contrast', {});
+      return;
+    }
+
+    const needsContrast =
+      pruneMisses() >= CONTRAST_MISS_COUNT &&
+      pruneTabs() >= CONTRAST_TAB_COUNT;
+
+    setSource(
+      'contrast',
+      needsContrast ? {
+        theme: 'high-contrast',
+        underlineLinks: true,
+        thickFocus: true
+      } : {},
+      needsContrast
+        ? 'після частих промахів і пошуку елементів клавіатурою увімкнено висококонтрастну тему.'
+        : ''
+    );
   }
 
   function scheduleMissPrune(){
@@ -366,7 +437,7 @@ export function initAIAdapt({ a11y } = {}){
     missTimer = 0;
     if (!missTimes.length) return;
 
-    const delay = Math.max(100, 45020 - (performance.now() - missTimes[0]));
+    const delay = Math.max(100, CONTRAST_SIGNAL_WINDOW_MS + 20 - (performance.now() - missTimes[0]));
     missTimer = window.setTimeout(syncMissAssist, delay);
   }
 
@@ -414,11 +485,12 @@ export function initAIAdapt({ a11y } = {}){
     }else{
       setSource('misses', {});
     }
+    syncContrastAssist();
     scheduleMissPrune();
   }
 
   function handlePotentialMiss(e, source = 'click'){
-    if (!isSmart() || autoSuppressed || e.defaultPrevented) return;
+    if (!isSmart() || autoSuppressed || isOverlayOpen() || e.defaultPrevented) return;
     if (e.target.closest?.(INTERACTIVE_SELECTOR)) return;
     if (!nearestInteractiveWithin(e.clientX, e.clientY)) return;
 
@@ -438,6 +510,7 @@ export function initAIAdapt({ a11y } = {}){
   function syncKeyboardAssist(){
     if (!isSmart() || autoSuppressed){
       setSource('keyboard', {});
+      setSource('contrast', {});
       return;
     }
 
@@ -452,11 +525,120 @@ export function initAIAdapt({ a11y } = {}){
         thickFocus: true
       }, 'після 3 натискань Tab посилено keyboard-focus.');
     }
+    syncContrastAssist();
   }
 
-  function clearArticleTimer(){
-    window.clearTimeout(articleTimer);
-    articleTimer = 0;
+  function isFeedVisible(){
+    const cards = document.getElementById('cards');
+    if (!cards || !cards.getClientRects().length) return false;
+
+    const rect = cards.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight;
+  }
+
+  function hasRecentFeedEngagement(now = performance.now()){
+    feedInteractionTimes = feedInteractionTimes.filter((time) => now - time <= FEED_READING_TIME_MS + 5000);
+    return feedInteractionTimes.length >= 2;
+  }
+
+  function canCountFeedReading(now = performance.now()){
+    return (
+      isSmart() &&
+      !autoSuppressed &&
+      !isOverlayOpen() &&
+      document.visibilityState !== 'hidden' &&
+      isFeedVisible() &&
+      hasRecentFeedEngagement(now)
+    );
+  }
+
+  function stopFeedReadingTimer(){
+    window.clearInterval(feedReadingTimer);
+    feedReadingTimer = 0;
+    feedVisibleSince = 0;
+    feedReadingExitSince = 0;
+  }
+
+  function clearFeedReadingAssist(reason){
+    if (!sources.feedReading.readingMode) return;
+
+    setSource('feedReading', {}, reason || '');
+    feedInteractionTimes = [];
+    stopFeedReadingTimer();
+  }
+
+  function syncFeedReadingExit(now = performance.now()){
+    if (document.visibilityState === 'hidden' || articleEl || isFeedVisible()){
+      feedReadingExitSince = 0;
+      return;
+    }
+
+    if (!feedReadingExitSince){
+      feedReadingExitSince = now;
+      return;
+    }
+    if (now - feedReadingExitSince < FEED_READING_EXIT_TIME_MS) return;
+
+    clearFeedReadingAssist(
+      'після переходу до іншого розділу повернуто звичайний режим сторінки.'
+    );
+  }
+
+  function syncFeedReadingAssist(){
+    if (sources.feedReading.readingMode){
+      syncFeedReadingExit();
+      return;
+    }
+
+    const now = performance.now();
+    if (!canCountFeedReading(now)){
+      feedVisibleSince = 0;
+      if (!feedInteractionTimes.length) stopFeedReadingTimer();
+      return;
+    }
+
+    if (!feedVisibleSince){
+      feedVisibleSince = now;
+      return;
+    }
+    if (now - feedVisibleSince < FEED_READING_TIME_MS) return;
+
+    setSource('feedReading', {
+      readingMode: true,
+      readingRuler: true,
+      lineHeight: 1.75,
+      columnWidth: 'narrow',
+      reduceMotion: true,
+      oneColumn: true
+    }, 'після тривалого активного перегляду стрічки увімкнено комфортний режим читання.');
+    feedVisibleSince = 0;
+    feedReadingExitSince = 0;
+  }
+
+  function noteFeedEngagement(e){
+    const hasElementTarget = e?.target instanceof Element;
+    const fromCards = hasElementTarget && !!e.target.closest('#cards');
+    if (hasElementTarget && !fromCards) return;
+    if (!fromCards && !isFeedVisible()) return;
+    if (!isSmart() || autoSuppressed || isOverlayOpen()) return;
+
+    const now = performance.now();
+    const lastTime = feedInteractionTimes.at(-1) || 0;
+    if (now - lastTime >= 250) feedInteractionTimes.push(now);
+
+    if (!feedReadingTimer){
+      feedReadingTimer = window.setInterval(syncFeedReadingAssist, 500);
+    }
+    syncFeedReadingAssist();
+  }
+
+  function handleFeedReadingIntentChange(e){
+    if (!sources.feedReading.readingMode || autoSuppressed || articleEl) return;
+
+    const target = e?.target instanceof Element ? e.target : null;
+    if (!target || target.closest('#cards, .news-dialog, #ai-indicator')) return;
+
+    clearFeedReadingAssist('після переходу до іншої дії повернуто звичайний режим сторінки.');
   }
 
   function enableReadingAssist(reason){
@@ -519,25 +701,47 @@ export function initAIAdapt({ a11y } = {}){
     }
   }
 
-  function openArticle(dialog){
-    clearArticleTimer();
+  function openArticle(dialog, item){
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleEl = dialog || document.getElementById('news-dialog');
     articleScrollEl = articleEl?.querySelector('.news-dialog-body') || null;
     articleOpenedAt = performance.now();
     articleNavigationCount = 0;
+    currentArticleId = String(item?.id || '');
     articleScrollEl?.addEventListener('scroll', handleArticleScroll, { passive: true });
     articleScrollEl?.addEventListener('pointerup', handleArticlePointer, { passive: true });
     articleScrollEl?.addEventListener('touchstart', handleArticleTouchStart, { passive: true });
     syncReadingCurrent();
-    const textLength = articleScrollEl?.textContent?.trim().length || 0;
-    articleTimer = window.setTimeout(() => {
-      enableReadingAssist('стаття залишається відкритою для тривалого читання');
-    }, textLength >= 300 ? 12000 : 15000);
+
+    const savedProgress = articlePositions.get(currentArticleId);
+    if (Number.isFinite(savedProgress) && savedProgress > 0.05 && savedProgress < 0.95){
+      requestAnimationFrame(() => {
+        if (!articleScrollEl || currentArticleId !== String(item?.id || '')) return;
+        setSource('returning', {
+          readingRuler: true,
+          columnWidth: 'narrow'
+        }, 'повернуто до попереднього місця у повторно відкритій статті.');
+        const available = Math.max(0, articleScrollEl.scrollHeight - articleScrollEl.clientHeight);
+        articleScrollEl.scrollTop = available * savedProgress;
+        syncReadingCurrent();
+      });
+    }else{
+      setSource('returning', {});
+    }
   }
 
   function closeArticle(){
-    clearArticleTimer();
+    const available = articleScrollEl
+      ? Math.max(0, articleScrollEl.scrollHeight - articleScrollEl.clientHeight)
+      : 0;
+    const progress = available > 0 ? articleScrollEl.scrollTop / available : 0;
+
+    if (currentArticleId && progress >= 0.05 && progress < 0.95){
+      articlePositions.set(currentArticleId, progress);
+    }else if (currentArticleId && progress >= 0.95){
+      articlePositions.delete(currentArticleId);
+    }
+
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleScrollEl?.removeEventListener('pointerup', handleArticlePointer);
     articleScrollEl?.removeEventListener('touchstart', handleArticleTouchStart);
@@ -545,8 +749,10 @@ export function initAIAdapt({ a11y } = {}){
     articleEl = null;
     articleOpenedAt = 0;
     articleNavigationCount = 0;
+    currentArticleId = '';
     setReadingCurrent(null);
     setSource('reading', {});
+    setSource('returning', {});
   }
 
   function handleSelection(){
@@ -568,6 +774,11 @@ export function initAIAdapt({ a11y } = {}){
   }
 
   function handleTaskFocusIn(e){
+    if (isOverlayOpen()){
+      handleTaskFocusOut();
+      return;
+    }
+
     if (!isTypingControl(e.target)){
       handleTaskFocusOut();
       return;
@@ -601,23 +812,23 @@ export function initAIAdapt({ a11y } = {}){
       now - lastSharpInput.time < 180 &&
       direction === lastSharpInput.direction;
 
-    if (duplicate || !isSmart() || autoSuppressed) return;
+    if (duplicate || !isSmart() || autoSuppressed || isOverlayOpen()) return;
 
     pauseMotionBriefly();
     lastSharpInput = { direction, time: now };
     sharpScrollTimes = sharpScrollTimes.filter((time) => now - time <= 8000);
     sharpScrollTimes.push(now);
 
-    if (sharpScrollTimes.length >= 5){
+    if (sharpScrollTimes.length >= SHARP_SCROLL_DECLUTTER_COUNT){
       setSource('scroll', {
         reduceMotion: true,
         declutter: true,
         readingRuler: true
       }, 'після серії різких прокручувань зменшено рух і прибрано зайвий інформаційний шум.');
-    }else if (sharpScrollTimes.length >= 3){
+    }else if (sharpScrollTimes.length >= SHARP_SCROLL_REDUCE_COUNT){
       setSource('scroll', {
         reduceMotion: true
-      }, 'після трьох різких прокручувань стабільно зменшено рух.');
+      }, 'після серії різких прокручувань стабільно зменшено рух.');
     }
   }
 
@@ -630,7 +841,7 @@ export function initAIAdapt({ a11y } = {}){
     lastScroll = { y, time: now };
 
     if (media.coarse?.matches) return;
-    if (distance < 180 || distance / elapsed <= 1.45) return;
+    if (distance < SHARP_SCROLL_DISTANCE || distance / elapsed <= SHARP_SCROLL_SPEED) return;
 
     registerSharpScroll(direction);
   }
@@ -638,11 +849,18 @@ export function initAIAdapt({ a11y } = {}){
   function handleTouchStart(e){
     const touch = e.touches?.[0];
     if (!touch) return;
+    const inArticle = !!e.target.closest?.('.news-dialog-body');
+
+    if (isOverlayOpen() && !inArticle){
+      touchGesture = { active: false, startY: 0, startedAt: 0, inArticle: false };
+      return;
+    }
+
     touchGesture = {
       active: true,
       startY: touch.clientY,
       startedAt: performance.now(),
-      inArticle: !!e.target.closest?.('.news-dialog-body')
+      inArticle
     };
     if (touchGesture.inArticle) handleArticleTouchStart(e);
   }
@@ -663,15 +881,14 @@ export function initAIAdapt({ a11y } = {}){
       return;
     }
 
-    if (Math.abs(distance) < 180 || elapsed > 750) return;
+    if (Math.abs(distance) < SHARP_SCROLL_DISTANCE || elapsed > 750) return;
     registerSharpScroll(Math.sign(distance) || 1);
   }
 
   function handleWheelScroll(e){
-    if (e.ctrlKey || e.metaKey){
-      updateGestureZoom(e.deltaY);
-      return;
-    }
+    if (isOverlayOpen()) return;
+
+    if (e.ctrlKey || e.metaKey) return;
 
     const now = performance.now();
     const direction = Math.sign(e.deltaY);
@@ -693,7 +910,7 @@ export function initAIAdapt({ a11y } = {}){
     wheelScroll.lastAt = now;
     const elapsed = Math.max(1, now - wheelScroll.startedAt);
 
-    if (wheelScroll.delta >= 180 && wheelScroll.delta / elapsed > 1.45){
+    if (wheelScroll.delta >= SHARP_SCROLL_DISTANCE && wheelScroll.delta / elapsed > SHARP_SCROLL_SPEED){
       registerSharpScroll(direction);
       wheelScroll = {
         delta: 0,
@@ -708,23 +925,23 @@ export function initAIAdapt({ a11y } = {}){
     if (!el || !message) return;
 
     const id = el.id || (el.id = `field_${Math.random().toString(36).slice(2, 9)}`);
-    const errorId = `${id}__error`;
-    const describedIds = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
-    let error = describedIds
-      .map((describedId) => document.getElementById(describedId))
-      .find((node) => node?.matches?.('[role="alert"], .a11y-field-error'));
-    error ||= document.getElementById(errorId);
+    const errorId = `${id}__ai_error`;
+    let error = document.getElementById(errorId);
 
     if (!error){
       error = document.createElement('div');
       error.id = errorId;
       error.className = 'a11y-field-error';
       error.setAttribute('role', 'alert');
+      error.dataset.aiError = 'true';
       (el.closest('.field') || el.parentElement || el).appendChild(error);
     }
 
     error.textContent = message;
-    el.setAttribute('aria-invalid', 'true');
+    if (!el.hasAttribute('aria-invalid')){
+      el.setAttribute('aria-invalid', 'true');
+      el.dataset.aiInvalid = 'true';
+    }
     const describedBy = new Set((el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
     describedBy.add(error.id);
     el.setAttribute('aria-describedby', Array.from(describedBy).join(' '));
@@ -732,13 +949,20 @@ export function initAIAdapt({ a11y } = {}){
 
   function clearInlineErrors(el){
     const describedIds = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
-    describedIds
-      .map((id) => document.getElementById(id))
-      .filter((node) => node?.matches?.('[role="alert"], .a11y-field-error'))
-      .forEach((node) => {
-        if (node.id === `${el.id}__error`) node.remove();
-        else node.textContent = '';
-      });
+    const retainedIds = [];
+
+    describedIds.forEach((id) => {
+      const node = document.getElementById(id);
+      if (node?.dataset.aiError === 'true') node.remove();
+      else retainedIds.push(id);
+    });
+
+    if (retainedIds.length) el.setAttribute('aria-describedby', retainedIds.join(' '));
+    else el.removeAttribute('aria-describedby');
+    if (el.dataset.aiInvalid === 'true'){
+      el.removeAttribute('aria-invalid');
+      delete el.dataset.aiInvalid;
+    }
   }
 
   function registerInvalidInput(el){
@@ -759,32 +983,54 @@ export function initAIAdapt({ a11y } = {}){
     }
   }
 
-  function scheduleAutoResume(durationMs = 10000){
-    window.clearTimeout(autoResumeTimer);
-    autoSuppressed = true;
-    autoResumeTimer = window.setTimeout(() => {
-      autoSuppressed = false;
-      applySystemPrefs();
-      handleZoomChange();
-    }, durationMs);
+  function handleSearchCommitted(e){
+    if (!isSmart() || autoSuppressed) return;
+
+    const query = String(e.detail?.query || '').trim();
+    const resultCount = Number(e.detail?.resultCount);
+    const now = performance.now();
+
+    if (!query || resultCount > 0){
+      emptySearchAttempts = [];
+      lastEmptySearch = { query: '', time: 0 };
+      setSource('search', {});
+      return;
+    }
+
+    if (query === lastEmptySearch.query && now - lastEmptySearch.time < 1000) return;
+    lastEmptySearch = { query, time: now };
+    emptySearchAttempts = emptySearchAttempts.filter((time) => now - time <= 60000);
+    emptySearchAttempts.push(now);
+
+    if (emptySearchAttempts.length >= 2){
+      setSource('search', {
+        searchAssist: true
+      }, 'після повторних безрезультатних пошуків виділено поле та показано коротку підказку.');
+    }
   }
 
   function clearAutoState({ suppress = false } = {}){
-    clearArticleTimer();
     articleScrollEl?.removeEventListener('scroll', handleArticleScroll);
     articleEl = null;
     articleScrollEl = null;
     articleOpenedAt = 0;
     articleNavigationCount = 0;
+    currentArticleId = '';
     setReadingCurrent(null);
     touchGesture = { active: false, startY: 0, startedAt: 0, inArticle: false };
     missTimes = [];
     window.clearTimeout(missTimer);
     missTimer = 0;
     tabCount = 0;
+    tabTimes = [];
+    feedInteractionTimes = [];
+    stopFeedReadingTimer();
     sharpScrollTimes = [];
     invalidTimes = [];
     lastInvalidInput = { el: null, time: 0 };
+    emptySearchAttempts = [];
+    lastEmptySearch = { query: '', time: 0 };
+    articlePositions.clear();
     lastMissInput = { x: 0, y: 0, time: 0, source: '' };
     wheelScroll = { delta: 0, direction: 0, startedAt: 0, lastAt: 0 };
     lastSharpInput = { direction: 0, time: 0 };
@@ -796,10 +1042,7 @@ export function initAIAdapt({ a11y } = {}){
     document.body.classList.remove('motion-paused');
     decisionCache.clear();
     clearSources();
-    window.clearTimeout(autoResumeTimer);
-    autoResumeTimer = 0;
-    autoSuppressed = false;
-    if (suppress) scheduleAutoResume();
+    autoSuppressed = suppress;
     lastZoomLevel = zoomLevelFromFactor(getZoomFactor());
   }
 
@@ -808,47 +1051,70 @@ export function initAIAdapt({ a11y } = {}){
     if (!isEnabled()) return;
 
     applySystemPrefs();
+    applyNetworkPrefs();
     handleZoomChange();
   }
 
-  function handleModeChange(force = false){
+  function handleModeChange(force = false, { preserveSuppression = false } = {}){
     const next = mode();
     if (!force && next === lastMode) return;
+    const wasSuppressed = autoSuppressed;
     lastMode = next;
-    clearAutoState();
-    autoSuppressed = false;
-    if (!isEnabled()) return;
+    clearAutoState({ suppress: preserveSuppression && wasSuppressed });
+    if (!isEnabled() || autoSuppressed) return;
 
     applySystemPrefs();
+    applyNetworkPrefs();
     handleZoomChange();
   }
 
   Object.values(media).forEach((query) => {
     query?.addEventListener?.('change', () => {
-      autoSuppressed = false;
+      if (autoSuppressed) return;
       applySystemPrefs({ announce: true });
     });
   });
 
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  connection?.addEventListener?.('change', () => {
+    if (autoSuppressed) return;
+    applyNetworkPrefs({ announce: true });
+  });
+  window.addEventListener('online', () => applyNetworkPrefs({ announce: true }));
+
   document.addEventListener('pointerup', (e) => {
     if (e.isPrimary === false || (Number.isFinite(e.button) && e.button !== 0)) return;
     handlePotentialMiss(e, 'pointerup');
+    handleFeedReadingIntentChange(e);
+    noteFeedEngagement(e);
   }, true);
   document.addEventListener('click', (e) => {
+    handleFeedReadingIntentChange(e);
     if (e.detail === 0) return;
     handlePotentialMiss(e, 'click');
   }, true);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab' && isSmart() && !autoSuppressed){
+    if (e.key === 'Tab' && isSmart() && !autoSuppressed && !isOverlayOpen()){
       tabCount += 1;
+      tabTimes.push(performance.now());
       syncKeyboardAssist();
     }
 
-    if (articleEl && ['ArrowDown', 'PageDown', ' '].includes(e.key)){
-      articleNavigationCount += 1;
-      if (articleNavigationCount >= 3 && performance.now() - articleOpenedAt >= 2500){
-        enableReadingAssist('послідовно використано клавіатуру для читання статті');
-      }
+    if (articleEl && articleScrollEl && ['ArrowDown', 'PageDown', ' '].includes(e.key)){
+      const target = e.target instanceof Element ? e.target : document.activeElement;
+      const interactiveTarget = target?.closest?.(
+        'button, a[href], input, textarea, select, summary, [contenteditable]:not([contenteditable="false"])'
+      );
+      if (interactiveTarget || !target || !articleEl.contains(target)) return;
+
+      const before = articleScrollEl.scrollTop;
+      window.setTimeout(() => {
+        if (!articleScrollEl || Math.abs(articleScrollEl.scrollTop - before) < 1) return;
+        articleNavigationCount += 1;
+        if (articleNavigationCount >= 3 && performance.now() - articleOpenedAt >= 2500){
+          enableReadingAssist('послідовно використано клавіатуру для читання статті');
+        }
+      }, 0);
     }
   }, true);
   document.querySelectorAll('input, textarea').forEach((control) => {
@@ -856,17 +1122,25 @@ export function initAIAdapt({ a11y } = {}){
     control.addEventListener('blur', handleTaskFocusOut);
   });
   document.addEventListener('focus', handleTaskFocusIn, true);
+  document.addEventListener('focusin', (e) => {
+    handleFeedReadingIntentChange(e);
+    noteFeedEngagement(e);
+  }, true);
   document.addEventListener('input', handleTaskFocusIn, true);
+  document.addEventListener('input', handleFeedReadingIntentChange, true);
   document.addEventListener('selectionchange', handleSelection);
-  document.addEventListener('news:dialog-opened', (e) => openArticle(e.detail?.dialog));
+  document.addEventListener('news:dialog-opened', (e) => openArticle(e.detail?.dialog, e.detail?.item));
   document.addEventListener('news:dialog-closed', closeArticle);
+  document.addEventListener('news:search-committed', handleSearchCommitted);
   document.addEventListener('a11y:auto-clear', () => clearAutoState({ suppress: true }));
+  document.addEventListener('a11y:auto-resume', restartAutoState);
   document.addEventListener('a11y:reset-all', restartAutoState);
   document.addEventListener('change', (e) => {
     if (e.target?.id === 'ai-mode') handleModeChange();
   });
 
   window.addEventListener('scroll', handleSharpScroll, { passive: true });
+  window.addEventListener('scroll', noteFeedEngagement, { passive: true });
   window.addEventListener('touchstart', handleTouchStart, { passive: true });
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
   window.addEventListener('touchcancel', () => {
@@ -884,21 +1158,6 @@ export function initAIAdapt({ a11y } = {}){
   }, { passive: true });
 
   window.addEventListener('wheel', handleWheelScroll, { passive: true });
-  window.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey)) return;
-
-    if (e.key === '0'){
-      gestureZoomFactor = 1;
-      startZoomMonitor();
-    }else if (e.key === '+' || e.key === '='){
-      gestureZoomFactor = Math.min(4, gestureZoomFactor * 1.1);
-      startZoomMonitor();
-    }else if (e.key === '-'){
-      gestureZoomFactor = Math.max(1, gestureZoomFactor / 1.1);
-      startZoomMonitor();
-    }
-  }, { passive: true });
-
   document.addEventListener('invalid', (e) => {
     if (!isEnabled()) return;
     const el = e.target;
@@ -912,7 +1171,6 @@ export function initAIAdapt({ a11y } = {}){
     if (!el.checkValidity()){
       return;
     }
-    el.removeAttribute('aria-invalid');
     clearInlineErrors(el);
     if (!document.querySelector('[aria-invalid="true"]')){
       invalidTimes = [];
@@ -926,7 +1184,7 @@ export function initAIAdapt({ a11y } = {}){
   syncVisualViewport();
   lastZoomFingerprint = getZoomFingerprint();
   window.setInterval(pollZoom, 800);
-  handleModeChange(true);
+  handleModeChange(true, { preserveSuppression: true });
 
   return {
     notify: showAIToast,

@@ -6,6 +6,7 @@ import { initA11yPanel } from './a11y/panel.js';
 import { initTTS, extractReadableTextFromCard } from './a11y/tts.js';
 import { initAIAdapt } from './ai/adapt.js';
 import { initAIExtras } from './ai_extras.js';
+import { syncSharedOverlayState } from './ui/overlay.js';
 
 function ready(fn){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
@@ -40,14 +41,13 @@ ready(() => {
 
   const tickerTrack = document.getElementById('ticker-track');
   const tickerSection = document.querySelector('.ticker');
+  const tickerToggle = document.getElementById('ticker-toggle');
   const search = document.getElementById('news-search');
   const clearFiltersBtn = document.getElementById('clear-filters');
   const form = document.getElementById('subscribe-form');
   const formMessage = document.getElementById('form-message');
   const email = document.getElementById('email');
-  const password = document.getElementById('password');
   const emailError = document.getElementById('email-error');
-  const passwordError = document.getElementById('password-error');
   const pageBackdrop = document.getElementById('backdrop');
   const newsDialog = document.getElementById('news-dialog');
   const newsDialogClose = document.getElementById('news-dialog-close');
@@ -59,18 +59,7 @@ ready(() => {
   const tickerController = createTickerController(tickerTrack);
   let currentTrend = null;
   let lastDialogTrigger = null;
-
-  function syncSharedOverlayState(){
-    const body = document.body;
-    if (!body) return;
-
-    const hasPanel = body.dataset.a11yPanelOpen === 'true';
-    const hasNewsDialog = body.dataset.newsDialogOpen === 'true';
-    const shouldLock = hasPanel || hasNewsDialog;
-
-    body.classList.toggle('dialog-open', shouldLock);
-    if (pageBackdrop) pageBackdrop.hidden = !shouldLock;
-  }
+  let searchDebounceTimer = 0;
 
   syncStickyOffsets();
 
@@ -102,12 +91,44 @@ ready(() => {
   }
 
   function resetExperienceState(){
+    cancelPendingSearch();
     currentTrend = null;
     if (search) search.value = '';
     setScenarioActive('');
     applyFilterUI('all');
     setNewsState({ filter: 'all', query: '' });
-    ensureTickerRunning(true);
+    document.dispatchEvent(new CustomEvent('news:search-committed', {
+      detail: {
+        query: '',
+        resultCount: document.querySelectorAll('#cards [data-news-item]').length
+      }
+    }));
+  }
+
+  function cancelPendingSearch(){
+    window.clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = 0;
+  }
+
+  function commitSearchQuery(){
+    if (!search) return;
+    window.clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = 0;
+    currentTrend = null;
+    setScenarioActive('');
+    setNewsQuery(search.value);
+    updateClearFiltersVisibility();
+    document.dispatchEvent(new CustomEvent('news:search-committed', {
+      detail: {
+        query: search.value.trim(),
+        resultCount: document.querySelectorAll('#cards [data-news-item]').length
+      }
+    }));
+  }
+
+  function scheduleSearchQuery(){
+    cancelPendingSearch();
+    searchDebounceTimer = window.setTimeout(commitSearchQuery, 160);
   }
 
   function ensureTickerRunning(restart = false){
@@ -134,9 +155,7 @@ ready(() => {
 
   function clearFormErrors(){
     if (emailError) emailError.textContent = '';
-    if (passwordError) passwordError.textContent = '';
     email?.removeAttribute('aria-invalid');
-    password?.removeAttribute('aria-invalid');
   }
 
   function showFieldError(input, errorEl, message){
@@ -157,7 +176,7 @@ ready(() => {
     if (!newsDialog) return;
     newsDialog.hidden = true;
     document.body.dataset.newsDialogOpen = 'false';
-    syncSharedOverlayState();
+    syncSharedOverlayState(pageBackdrop);
     document.dispatchEvent(new CustomEvent('news:dialog-closed'));
     if (restoreFocus) lastDialogTrigger?.focus?.();
   }
@@ -168,7 +187,12 @@ ready(() => {
     a11y?.close?.({ restoreFocus: false });
     lastDialogTrigger = trigger || document.activeElement;
     newsDialogTitle.textContent = item.title;
-    newsDialogMeta.textContent = `${item.categoryLabel} • ${item.minutes} хв • ${new Intl.DateTimeFormat('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(item.dateISO))}`;
+    newsDialogMeta.textContent = `${item.categoryLabel} • ${item.minutes} хв • ${new Intl.DateTimeFormat('uk-UA', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC'
+    }).format(new Date(item.dateISO))}`;
     newsDialogContent.innerHTML = (item.content || [item.excerpt])
       .filter(Boolean)
       .map((paragraph) => `<p>${escapeHTML(paragraph)}</p>`)
@@ -181,7 +205,7 @@ ready(() => {
 
     newsDialog.hidden = false;
     document.body.dataset.newsDialogOpen = 'true';
-    syncSharedOverlayState();
+    syncSharedOverlayState(pageBackdrop);
     document.dispatchEvent(new CustomEvent('news:dialog-opened', {
       detail: { dialog: newsDialog, item }
     }));
@@ -200,6 +224,7 @@ ready(() => {
   initNav({
     initialFilter: savedState.filter,
     onFilter: (filter) => {
+      cancelPendingSearch();
       currentTrend = null;
       setScenarioActive('');
       setNewsFilter(filter);
@@ -226,11 +251,11 @@ ready(() => {
   }
 
   if (search){
-    search.addEventListener('input', () => {
-      currentTrend = null;
-      setScenarioActive('');
-      setNewsQuery(search.value);
-      updateClearFiltersVisibility();
+    search.addEventListener('input', scheduleSearchQuery);
+    search.addEventListener('change', commitSearchQuery);
+    search.addEventListener('search', commitSearchQuery);
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commitSearchQuery();
     });
   }
 
@@ -252,6 +277,7 @@ ready(() => {
       return;
     }
 
+    cancelPendingSearch();
     currentTrend = query;
     setScenarioActive('');
     if (search) search.value = query;
@@ -282,6 +308,7 @@ ready(() => {
     const filterBtn = e.target.closest('[data-filter]');
     if (!filterBtn) return;
 
+    cancelPendingSearch();
     currentTrend = null;
     setScenarioActive('');
     updateClearFiltersVisibility();
@@ -303,6 +330,7 @@ ready(() => {
     const target = focusMap[focus];
     if (!target) return;
 
+    cancelPendingSearch();
     currentTrend = null;
     setScenarioActive(focus);
     applyFilterUI(target.filter);
@@ -317,7 +345,7 @@ ready(() => {
   document.addEventListener('a11y:reset-all', () => {
     if (newsDialog && !newsDialog.hidden) closeNewsDialog({ restoreFocus: false });
     resetExperienceState();
-    syncSharedOverlayState();
+    syncSharedOverlayState(pageBackdrop);
     ensureTickerRunning(true);
     updateClearFiltersVisibility();
   });
@@ -353,7 +381,7 @@ ready(() => {
     }
   });
 
-  if (form && formMessage && email && password) {
+  if (form && formMessage && email) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
 
@@ -369,13 +397,6 @@ ready(() => {
         return;
       }
 
-      if (!password.value || !password.checkValidity()) {
-        showFieldError(password, passwordError, 'Пароль має містити мінімум 6 символів.');
-        formMessage.textContent = 'Перевірте форму та виправте помилки.';
-        formMessage.style.color = '#b00020';
-        return;
-      }
-
       formMessage.textContent = 'Дякуємо за підписку!';
       formMessage.style.color = '#2e7d32';
       form.reset();
@@ -386,35 +407,32 @@ ready(() => {
       }, 100);
     });
 
-    [email, password].forEach((input) => {
-      input.addEventListener('input', () => {
-        if (input === email && emailError) emailError.textContent = '';
-        if (input === password && passwordError) passwordError.textContent = '';
-        input.removeAttribute('aria-invalid');
-        formMessage.textContent = '';
-        formMessage.style.color = '';
-        formMessage.style.opacity = '1';
-      });
+    email.addEventListener('input', () => {
+      if (emailError) emailError.textContent = '';
+      email.removeAttribute('aria-invalid');
+      formMessage.textContent = '';
+      formMessage.style.color = '';
+      formMessage.style.opacity = '1';
     });
   }
 
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      search?.focus();
-    }
+    const panel = document.getElementById('a11y-panel');
+    const newsDialogOpen = !!newsDialog && !newsDialog.hidden;
+    const panelOpen = !!panel && !panel.hidden;
+    const overlayOpen = newsDialogOpen || panelOpen;
 
     if (e.key === 'Escape') {
-      if (newsDialog && !newsDialog.hidden) {
+      if (newsDialogOpen) {
         closeNewsDialog();
         return;
       }
 
-      const panel = document.getElementById('a11y-panel');
-      if (panel && !panel.hidden) a11y.close();
+      if (panelOpen) a11y.close();
+      return;
     }
 
-    if (newsDialog && !newsDialog.hidden && e.key === 'Tab') {
+    if (newsDialogOpen && e.key === 'Tab') {
       const items = getDialogFocusable();
       if (!items.length) return;
 
@@ -430,24 +448,21 @@ ready(() => {
       }
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+    if (overlayOpen) return;
+
+    const editableTarget = e.target instanceof Element
+      ? e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+      : null;
+    if (editableTarget) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      const panel = document.getElementById('a11y-panel');
-      if (panel && panel.hidden) a11y.open();
+      search?.focus();
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '6') {
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
       e.preventDefault();
-      const filters = ['all', 'politics', 'tech', 'sport', 'world', 'culture'];
-      const filterIndex = parseInt(e.key, 10) - 1;
-
-      if (filters[filterIndex]) {
-        currentTrend = null;
-        setScenarioActive('');
-        setNewsFilter(filters[filterIndex]);
-        applyFilterUI(filters[filterIndex]);
-        updateClearFiltersVisibility();
-      }
+      if (panel && panel.hidden) a11y.open();
     }
 
   });
@@ -458,15 +473,16 @@ ready(() => {
   if (canHoverTicker){
     tickerSection?.addEventListener('pointerenter', (e) => {
       if (e.pointerType && e.pointerType !== 'mouse') return;
-      tickerController?.pause('user');
+      tickerController?.pause('hover');
     });
     tickerSection?.addEventListener('pointerleave', (e) => {
       if (e.pointerType && e.pointerType !== 'mouse') return;
-      tickerController?.resume();
+      tickerController?.resume({ source: 'hover' });
     });
   }
+  tickerToggle?.addEventListener('click', () => tickerController?.toggleUserPause());
   tickerTrack?.addEventListener('ticker:pause', () => tickerController?.pause('ai'));
-  tickerTrack?.addEventListener('ticker:resume', () => tickerController?.resume());
+  tickerTrack?.addEventListener('ticker:resume', () => tickerController?.resume({ source: 'ai' }));
 });
 
 function syncStickyOffsets(){
@@ -482,11 +498,14 @@ function createTickerController(track){
 
   const mediaQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const viewport = track.parentElement;
+  const accessibleList = document.getElementById('ticker-accessible-list');
+  const pauseButton = document.getElementById('ticker-toggle');
   let frameId = 0;
   let lastTs = 0;
   let offset = 0;
   let cycleWidth = 0;
   let pausedByUser = false;
+  let pausedByHover = false;
   let pausedByAI = false;
   const speedPxPerSec = 42;
 
@@ -499,13 +518,24 @@ function createTickerController(track){
 
   function shouldPauseMotion(){
     return document.body.classList.contains('motion-paused') ||
-      document.body.classList.contains('a11y-task-focus');
+      document.body.classList.contains('a11y-task-focus') ||
+      document.body.classList.contains('dialog-open');
   }
 
   function stop(){
     if (frameId) cancelAnimationFrame(frameId);
     frameId = 0;
     lastTs = 0;
+  }
+
+  function syncPauseButton(){
+    if (!pauseButton) return;
+    pauseButton.setAttribute('aria-pressed', String(pausedByUser));
+    pauseButton.textContent = pausedByUser ? 'Продовжити' : 'Призупинити';
+    pauseButton.setAttribute(
+      'aria-label',
+      pausedByUser ? 'Продовжити рух стрічки заголовків' : 'Призупинити рух стрічки заголовків'
+    );
   }
 
   function applyTransform(){
@@ -526,7 +556,7 @@ function createTickerController(track){
   }
 
   function tick(ts){
-    if (shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+    if (shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByHover || pausedByAI || document.hidden){
       stop();
       return;
     }
@@ -545,7 +575,7 @@ function createTickerController(track){
   }
 
   function start(){
-    if (frameId || !recalc() || shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByAI || document.hidden){
+    if (frameId || !recalc() || shouldPauseMotion() || shouldReduceMotion() || pausedByUser || pausedByHover || pausedByAI || document.hidden){
       if (shouldReduceMotion()){
         offset = 0;
         track.style.transform = 'translate3d(0, 0, 0)';
@@ -567,28 +597,39 @@ function createTickerController(track){
     if (!headlines.length){
       stop();
       track.innerHTML = '';
+      accessibleList?.replaceChildren();
       track.style.transform = 'translate3d(0, 0, 0)';
       cycleWidth = 0;
       return;
     }
 
     const htmlOnce = headlines.map((title) => `
-      <div class="ticker-item" role="listitem">
+      <div class="ticker-item">
         <span class="ticker-dot" aria-hidden="true">•</span>
         <span>${escapeHTML(title)}</span>
       </div>
     `).join('');
 
     track.innerHTML = htmlOnce + htmlOnce;
+    if (accessibleList){
+      accessibleList.replaceChildren(...headlines.map((title) => {
+        const item = document.createElement('li');
+        item.textContent = title;
+        return item;
+      }));
+    }
     offset = 0;
+    syncPauseButton();
     requestRestart();
   }
 
-  function resume({ restart = false } = {}){
-    pausedByUser = false;
-    pausedByAI = false;
-    track.dataset.userPaused = 'false';
-    track.dataset.aiPaused = 'false';
+  function resume({ restart = false, source = 'all' } = {}){
+    if (source === 'all' || source === 'user') pausedByUser = false;
+    if (source === 'all' || source === 'hover') pausedByHover = false;
+    if (source === 'all' || source === 'ai') pausedByAI = false;
+    track.dataset.userPaused = String(pausedByUser);
+    track.dataset.aiPaused = String(pausedByAI);
+    syncPauseButton();
 
     if (restart){
       offset = 0;
@@ -602,12 +643,20 @@ function createTickerController(track){
     if (source === 'ai') {
       pausedByAI = true;
       track.dataset.aiPaused = 'true';
+    } else if (source === 'hover') {
+      pausedByHover = true;
     } else {
       pausedByUser = true;
       track.dataset.userPaused = 'true';
+      syncPauseButton();
     }
 
     stop();
+  }
+
+  function toggleUserPause(){
+    if (pausedByUser) resume({ source: 'user' });
+    else pause('user');
   }
 
   const observer = new MutationObserver(() => {
@@ -652,5 +701,7 @@ function createTickerController(track){
 
   document.fonts?.ready?.then?.(() => requestRestart());
 
-  return { pause, resume, setItems };
+  syncPauseButton();
+
+  return { pause, resume, setItems, toggleUserPause };
 }

@@ -1,3 +1,19 @@
+@font-face{
+  font-family:"Atkinson Hyperlegible";
+  src:url("../assets/fonts/atkinson-hyperlegible-400.ttf") format("truetype");
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+}
+
+@font-face{
+  font-family:"Atkinson Hyperlegible";
+  src:url("../assets/fonts/atkinson-hyperlegible-700.ttf") format("truetype");
+  font-style:normal;
+  font-weight:700;
+  font-display:swap;
+}
+
 :root{
   /* База (панель може змінювати) */
   --font-size-base: 100%;
@@ -72,8 +88,6 @@ html{
   text-size-adjust:100%;
   -webkit-text-size-adjust:100%;
   scroll-padding-top: calc(var(--header-offset, 70px) + 56px);
-  overflow-x: hidden;
-  overflow-x: clip;
 }
 
 body{
@@ -84,8 +98,6 @@ body{
   font-family: var(--font);
   line-height: var(--line);
   letter-spacing: var(--letter-space);
-  overflow-x: hidden;
-  overflow-x: clip;
 }
 
 img{max-width:100%;display:block;}
@@ -232,26 +244,19 @@ body[data-target-level="3"]{
 }
 
 body[data-target-level="1"] :where(
-  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  button, input:not([type="radio"]):not([type="checkbox"]),
   select, textarea, summary, [role="button"], [role="switch"], .ui-control
 ),
 body[data-target-level="2"] :where(
-  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  button, input:not([type="radio"]):not([type="checkbox"]),
   select, textarea, summary, [role="button"], [role="switch"], .ui-control
 ),
 body[data-target-level="3"] :where(
-  button, a[href], input:not([type="radio"]):not([type="checkbox"]),
+  button, input:not([type="radio"]):not([type="checkbox"]),
   select, textarea, summary, [role="button"], [role="switch"], .ui-control
 ){
   min-width:var(--target-min) !important;
   min-height:var(--target-min) !important;
-}
-
-body[data-target-level="1"] a[href],
-body[data-target-level="2"] a[href],
-body[data-target-level="3"] a[href]{
-  display:inline-flex;
-  align-items:center;
 }
 
 body[data-target-level="1"] :where(

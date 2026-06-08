@@ -2,8 +2,6 @@ let _all = [];
 let _mount = null;
 let _filter = 'all';
 let _query = '';
-let _renderTimers = [];
-let _renderFrame = 0;
 
 const VALID_FILTERS = new Set(['all', 'politics', 'tech', 'sport', 'world', 'culture']);
 
@@ -26,7 +24,12 @@ function escapeHTML(str){
 
 function formatDate(iso){
   try{
-    return new Intl.DateTimeFormat('uk-UA', { year: 'numeric', month: 'short', day: '2-digit' })
+    return new Intl.DateTimeFormat('uk-UA', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      timeZone: 'UTC'
+    })
       .format(new Date(iso));
   }catch{
     return iso;
@@ -79,6 +82,7 @@ function attachImageFallbacks(items){
     const item = items.find((entry) => entry.id === id);
     const img = card.querySelector('img');
     if (!item || !img) return;
+    if (img.dataset.fallbackSrc) return;
 
     const fallbackSrc = buildFallbackImage(item);
     img.dataset.fallbackSrc = fallbackSrc;
@@ -91,22 +95,8 @@ function attachImageFallbacks(items){
   });
 }
 
-function clearRenderTimers(){
-  if (_renderFrame) cancelAnimationFrame(_renderFrame);
-  _renderFrame = 0;
-  _renderTimers.forEach((timerId) => clearTimeout(timerId));
-  _renderTimers = [];
-}
-
 function normalizeFilter(filter){
   return VALID_FILTERS.has(filter) ? filter : 'all';
-}
-
-function shouldReduceMotion(){
-  const pref = document.body?.dataset?.motionPref;
-  if (pref === 'allow') return false;
-  if (pref === 'user' || pref === 'auto' || pref === 'gentle') return true;
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
 function matches(item){
@@ -118,10 +108,112 @@ function matches(item){
   return blob.includes(q);
 }
 
+function cardSignature(item){
+  return JSON.stringify([
+    item.id,
+    item.title,
+    item.excerpt,
+    item.category,
+    item.categoryLabel,
+    item.dateISO,
+    item.minutes,
+    item.image,
+    item.imageAlt
+  ]);
+}
+
+function cardMarkup(item){
+  const id = escapeHTML(item.id);
+  const title = escapeHTML(item.title);
+  const excerpt = escapeHTML(item.excerpt);
+  const cat = escapeHTML(item.categoryLabel || item.category);
+  const dateText = escapeHTML(formatDate(item.dateISO));
+  const dateISO = escapeHTML(item.dateISO || '');
+  const minutes = Number(item.minutes);
+  const minutesText = Number.isFinite(minutes) && minutes > 0 ? `${minutes} хв` : '';
+  const img = escapeHTML(item.image || '');
+  const imgAlt = escapeHTML(item.imageAlt || item.title || '');
+
+  return `
+    <article class="card glass visible" role="listitem" id="${id}" data-news-item data-category="${escapeHTML(item.category)}">
+      <div class="card-media">
+        ${img ? `<img src="${img}" alt="${imgAlt}" width="1200" height="675" loading="lazy" decoding="async">` : ''}
+        <button class="card-tts-btn ui-control"
+                type="button"
+                aria-label="Озвучити новину: ${title}"
+                title="Прослухати новину"
+                data-tts-read
+                data-tts-source="#${id}">🔊</button>
+      </div>
+
+      <div class="card-body">
+        <div class="meta">
+          <span class="nav-pill ui-control" style="pointer-events:none; opacity:.9;">${cat}</span>
+          <span aria-hidden="true">•</span>
+          <time datetime="${dateISO}">${dateText}</time>
+          ${minutesText ? `<span aria-hidden="true">•</span><span>${escapeHTML(minutesText)}</span>` : ''}
+        </div>
+
+        <h3 class="measure">
+          <button
+            class="news-link news-link-btn ui-control"
+            type="button"
+            aria-label="Відкрити новину: ${title}"
+            data-open-news="${id}"
+          >${title}</button>
+        </h3>
+
+        <p class="measure">${excerpt}</p>
+      </div>
+    </article>
+  `;
+}
+
+function createCard(item){
+  const template = document.createElement('template');
+  template.innerHTML = cardMarkup(item).trim();
+  const card = template.content.firstElementChild;
+  card.dataset.newsSignature = cardSignature(item);
+  return card;
+}
+
+function reconcileCards(items){
+  const existing = new Map(
+    Array.from(_mount.querySelectorAll('[data-news-item]'), (card) => [card.id, card])
+  );
+  const desiredIds = new Set(items.map((item) => String(item.id)));
+
+  Array.from(_mount.children).forEach((child) => {
+    if (!child.matches('[data-news-item]') || !desiredIds.has(child.id)) child.remove();
+  });
+
+  items.forEach((item, index) => {
+    const id = String(item.id);
+    const signature = cardSignature(item);
+    let card = existing.get(id);
+
+    if (!card || card.dataset.newsSignature !== signature){
+      const replacement = createCard(item);
+      if (card?.isConnected) card.replaceWith(replacement);
+      card = replacement;
+    }
+
+    const currentAtIndex = _mount.children[index];
+    if (currentAtIndex !== card) _mount.insertBefore(card, currentAtIndex || null);
+  });
+
+  if (!items.length){
+    const empty = document.createElement('p');
+    empty.className = 'meta';
+    empty.setAttribute('role', 'status');
+    empty.textContent = 'Немає новин для цього фільтра або пошуку.';
+    _mount.replaceChildren(empty);
+  }
+}
+
 function render(){
   if (!_mount) return;
 
-  clearRenderTimers();
   const items = _all.filter(matches);
   const live = document.getElementById('a11y-live');
 
@@ -134,79 +226,8 @@ function render(){
     setTimeout(() => { live.textContent = msg; }, 10);
   }
 
-  const html = items.map((item) => {
-    const id = escapeHTML(item.id);
-    const title = escapeHTML(item.title);
-    const excerpt = escapeHTML(item.excerpt);
-    const cat = escapeHTML(item.categoryLabel || item.category);
-    const dateText = escapeHTML(formatDate(item.dateISO));
-    const dateISO = escapeHTML(item.dateISO || '');
-    const minutes = Number(item.minutes);
-    const minutesText = Number.isFinite(minutes) && minutes > 0 ? `${minutes} хв` : '';
-    const img = escapeHTML(item.image || '');
-    const imgAlt = escapeHTML(item.imageAlt || item.title || '');
-
-    return `
-      <article class="card glass" role="listitem" id="${id}" data-news-item data-category="${escapeHTML(item.category)}">
-        <div class="card-media">
-          ${img ? `<img src="${img}" alt="${imgAlt}" loading="lazy" decoding="async">` : ''}
-          <button class="card-tts-btn ui-control"
-                  type="button"
-                  aria-label="Озвучити новину: ${title}"
-                  title="Прослухати новину"
-                  data-tts-read
-                  data-tts-source="#${id}">🔊</button>
-        </div>
-
-        <div class="card-body">
-          <div class="meta">
-            <span class="nav-pill ui-control" style="pointer-events:none; opacity:.9;">${cat}</span>
-            <span aria-hidden="true">•</span>
-            <time datetime="${dateISO}">${dateText}</time>
-            ${minutesText ? `<span aria-hidden="true">•</span><span>${escapeHTML(minutesText)}</span>` : ''}
-          </div>
-
-          <h3 class="measure">
-            <button
-              class="news-link news-link-btn ui-control"
-              type="button"
-              aria-label="Відкрити новину: ${title}"
-              data-open-news="${id}"
-            >${title}</button>
-          </h3>
-
-          <p class="measure">${excerpt}</p>
-        </div>
-      </article>
-    `;
-  }).join('');
-
-  _mount.innerHTML = html || '<p class="meta" role="status">Немає новин для цього фільтра або пошуку.</p>';
-
+  reconcileCards(items);
   attachImageFallbacks(items);
-
-  _renderFrame = requestAnimationFrame(() => {
-    _renderFrame = 0;
-    const cards = _mount.querySelectorAll('.card');
-
-    if (shouldReduceMotion()){
-      cards.forEach((card) => {
-        card.classList.remove('hidden');
-        card.classList.add('visible');
-      });
-      return;
-    }
-
-    cards.forEach((card, index) => {
-      card.classList.add('hidden');
-      const timerId = setTimeout(() => {
-        card.classList.remove('hidden');
-        card.classList.add('visible');
-      }, index * 50);
-
-      _renderTimers.push(timerId);
-    });
-  });
 }
 
 export function renderNews(mountEl, items){

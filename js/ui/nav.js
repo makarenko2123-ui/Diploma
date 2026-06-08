@@ -2,52 +2,25 @@ export function initNav({ onFilter, initialFilter = 'all' } = {}){
   const desktop = document.getElementById('nav-filters');
   const mobile = document.getElementById('mobile-menu');
   const burger = document.getElementById('menu-toggle');
-  let releaseTrap = null;
 
-  function getFocusable(container){
+  function getFirstFocusable(container){
     if (!container) return [];
     return Array.from(container.querySelectorAll(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )).filter(el => !el.hasAttribute('hidden') && el.getClientRects().length > 0);
-  }
-
-  function trapFocus(container){
-    function onKeydown(e){
-      if (e.key !== 'Tab') return;
-      const items = getFocusable(container);
-      if (!items.length) return;
-
-      const first = items[0];
-      const last = items[items.length - 1];
-
-      if (e.shiftKey && document.activeElement === first){
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last){
-        e.preventDefault();
-        first.focus();
-      }
-    }
-
-    container.addEventListener('keydown', onKeydown);
-    return () => container.removeEventListener('keydown', onKeydown);
+    )).find(el => !el.hasAttribute('hidden') && el.getClientRects().length > 0);
   }
 
   function openMobileMenu(){
     if (!mobile || !burger) return;
     mobile.hidden = false;
     burger.setAttribute('aria-expanded', 'true');
-    releaseTrap?.();
-    releaseTrap = trapFocus(mobile);
-    getFocusable(mobile)[0]?.focus();
+    getFirstFocusable(mobile)?.focus();
   }
 
   function closeMobileMenu({ restoreFocus = true } = {}){
     if (!mobile || !burger) return;
     mobile.hidden = true;
     burger.setAttribute('aria-expanded', 'false');
-    releaseTrap?.();
-    releaseTrap = null;
     if (restoreFocus) burger.focus();
   }
 
@@ -111,6 +84,11 @@ export function initNav({ onFilter, initialFilter = 'all' } = {}){
       if (mobile.hidden || mobile.contains(e.target) || burger.contains(e.target)) return;
       closeMobileMenu({ restoreFocus: false });
     }, true);
+
+    document.addEventListener('focusin', (e) => {
+      if (mobile.hidden || mobile.contains(e.target) || burger.contains(e.target)) return;
+      closeMobileMenu({ restoreFocus: false });
+    });
 
     ['a11y:panel-opening', 'news:dialog-opened'].forEach((eventName) => {
       document.addEventListener(eventName, () => {

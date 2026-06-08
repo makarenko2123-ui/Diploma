@@ -338,6 +338,9 @@ body[data-zoom-assist="4"] .back-to-top{
   position: sticky;
   top: var(--header-offset, var(--header-h));
   z-index: 35;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
@@ -348,6 +351,7 @@ body[data-zoom-assist="4"] .back-to-top{
 }
 
 .ticker-viewport{
+  min-width:0;
   overflow: hidden;
   -webkit-overflow-scrolling: touch;
 }
@@ -369,6 +373,18 @@ body[data-zoom-assist="4"] .back-to-top{
   color: var(--muted);
   font-size: clamp(0.92rem, 0.85rem + 0.2vw, 1rem);
   flex: 0 0 auto;
+}
+
+.ticker-toggle{
+  margin-right:calc(12px + env(safe-area-inset-right));
+  min-height:44px;
+  padding:7px 12px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--fg);
+  cursor:pointer;
+  white-space:nowrap;
 }
 
 body[data-zoom-assist="1"] .ticker-track,
@@ -501,6 +517,12 @@ body[data-zoom-assist="4"] .card-body{
 
   .ticker-item{
     font-size:0.9rem;
+  }
+
+  .ticker-toggle{
+    margin-right:calc(8px + env(safe-area-inset-right));
+    padding-inline:10px;
+    font-size:0.82rem;
   }
 
   .back-to-top{

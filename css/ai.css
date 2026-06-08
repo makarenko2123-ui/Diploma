@@ -63,6 +63,34 @@ select[aria-invalid="true"]{
   outline-offset: 2px;
 }
 
+.search-assist-hint{
+  display:none;
+  color:var(--fg);
+  font-size:0.88rem;
+  line-height:1.45;
+}
+
+body.a11y-search-assist .news-tools .search{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:2px solid var(--accent-focus);
+  border-radius:16px;
+  background:color-mix(in oklab, var(--accent) 10%, var(--surface));
+}
+
+body.a11y-search-assist .search-assist-hint{
+  display:block;
+}
+
+body.a11y-low-data :where(.hero-media, .card-media, .news-dialog-image){
+  display:none !important;
+}
+
+body.a11y-low-data .card-body{
+  padding-top:14px;
+}
+
 /* Reading ruler */
 body.a11y-reading-ruler #main :is(p, li, blockquote):focus-within,
 body.a11y-reading-ruler .news-dialog :is(p, li, blockquote):focus-within,

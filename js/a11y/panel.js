@@ -1,3 +1,5 @@
+import { syncSharedOverlayState } from '../ui/overlay.js';
+
 const KEY = 'a11y.settings.v4';
 const LEGACY_KEY = 'a11y.settings.v3';
 
@@ -34,6 +36,7 @@ const DEFAULTS = {
   largeTargets: false,
   declutter: false,
   aiMode: 'auto',
+  autoPaused: false,
   ttsRate: 1,
   manual: Object.fromEntries(MANUAL_KEYS.map((key) => [key, false]))
 };
@@ -54,7 +57,9 @@ const AUTO_DEFAULTS = {
   reduceTransparency: null,
   zoomLevel: 0,
   simplifyLayout: false,
-  oneColumn: false
+  oneColumn: false,
+  searchAssist: false,
+  lowData: false
 };
 
 const COLUMN_WIDTHS = {
@@ -105,7 +110,8 @@ function sanitizeState(raw){
     'reduceMotion',
     'readingMode',
     'largeTargets',
-    'declutter'
+    'declutter',
+    'autoPaused'
   ].forEach((key) => {
     state[key] = !!state[key];
   });
@@ -191,7 +197,7 @@ function sanitizeAutoState(raw){
   ['underlineLinks', 'thickFocus', 'reduceMotion', 'readingMode', 'readingRuler', 'declutter', 'reduceTransparency'].forEach((key) => {
     if (auto[key] !== null) auto[key] = !!auto[key];
   });
-  ['simplifyLayout', 'oneColumn'].forEach((key) => {
+  ['simplifyLayout', 'oneColumn', 'searchAssist', 'lowData'].forEach((key) => {
     auto[key] = !!auto[key];
   });
 
@@ -234,7 +240,9 @@ function getEffectiveState(state, auto){
     largeTargetLevel,
     zoomLevel: Number(auto.zoomLevel || 0),
     simplifyLayout: !!auto.simplifyLayout,
-    oneColumn: !!auto.oneColumn
+    oneColumn: !!auto.oneColumn,
+    searchAssist: !!auto.searchAssist,
+    lowData: !!auto.lowData
   };
 }
 
@@ -262,6 +270,8 @@ function applyState(state, auto){
   body.classList.toggle('a11y-reduce-transparency', !!effective.reduceTransparency);
   body.classList.toggle('a11y-simplified-layout', !!effective.simplifyLayout);
   body.classList.toggle('a11y-one-column', !!effective.oneColumn);
+  body.classList.toggle('a11y-search-assist', !!effective.searchAssist);
+  body.classList.toggle('a11y-low-data', !!effective.lowData);
 
   body.dataset.aiMode = state.aiMode;
   body.dataset.targetLevel = String(effective.largeTargetLevel);
@@ -277,18 +287,6 @@ function applyState(state, auto){
 
 function setRangeValueText(input, text){
   input?.setAttribute('aria-valuetext', text);
-}
-
-function syncSharedOverlayState(backdrop){
-  const body = document.body;
-  if (!body) return;
-
-  const shouldLock =
-    body.dataset.a11yPanelOpen === 'true' ||
-    body.dataset.newsDialogOpen === 'true';
-
-  body.classList.toggle('dialog-open', shouldLock);
-  if (backdrop) backdrop.hidden = !shouldLock;
 }
 
 function trapFocus(panel){
@@ -369,6 +367,7 @@ export function initA11yPanel({ tts } = {}){
   let state = load();
   let autoState = sanitizeAutoState(AUTO_DEFAULTS);
   let autoLog = [];
+  let autoPaused = state.autoPaused;
   let untrap = null;
   let resetArmed = false;
   let resetTimer = 0;
@@ -422,14 +421,22 @@ export function initA11yPanel({ tts } = {}){
 
     if (activity){
       activity.dataset.active = String(count > 0);
-      activity.textContent = count > 0 ? 'Автоадаптація активна' : 'Автоадаптація неактивна';
+      activity.textContent = autoPaused
+        ? 'Автоадаптація призупинена'
+        : (count > 0 ? 'Автоадаптація активна' : 'Автоадаптація неактивна');
     }
     if (countEl) countEl.textContent = `Авто-змін: ${count}`;
-    if (undoAuto) undoAuto.disabled = count === 0;
+    if (undoAuto){
+      undoAuto.disabled = !autoPaused && count === 0;
+      undoAuto.textContent = autoPaused ? 'Відновити автоадаптацію' : 'Скасувати й призупинити авто-зміни';
+    }
     if (list){
-      list.innerHTML = autoLog.length
-        ? autoLog.map((item) => `<li>${item}</li>`).join('')
-        : '<li>Автоматичних рішень ще немає.</li>';
+      const messages = autoLog.length ? autoLog : ['Автоматичних рішень ще немає.'];
+      list.replaceChildren(...messages.map((message) => {
+        const item = document.createElement('li');
+        item.textContent = message;
+        return item;
+      }));
     }
   }
 
@@ -483,6 +490,9 @@ export function initA11yPanel({ tts } = {}){
   }
 
   function clearAutoChanges({ announceChange = true, dispatch = true } = {}){
+    autoPaused = true;
+    state.autoPaused = true;
+    save(state);
     autoState = sanitizeAutoState(AUTO_DEFAULTS);
     applyState(state, autoState);
     if (announceChange){
@@ -492,6 +502,16 @@ export function initA11yPanel({ tts } = {}){
       syncAutoUI();
     }
     if (dispatch) document.dispatchEvent(new CustomEvent('a11y:auto-clear'));
+  }
+
+  function resumeAutoChanges(){
+    autoPaused = false;
+    state.autoPaused = false;
+    save(state);
+    recordAutoDecision('Автоадаптацію відновлено користувачем.');
+    announce('Автоадаптацію відновлено.');
+    document.dispatchEvent(new CustomEvent('a11y:auto-resume'));
+    syncAutoUI();
   }
 
   function open(){
@@ -600,17 +620,24 @@ export function initA11yPanel({ tts } = {}){
   controls.lineHeight?.addEventListener('input', () => commit({ lineHeight: Number(controls.lineHeight.value) }));
   controls.letterSpaceEm?.addEventListener('input', () => commit({ letterSpaceEm: Number(controls.letterSpaceEm.value) }));
   controls.columnWidth?.addEventListener('change', () => commit({ columnWidth: controls.columnWidth.value }));
-  controls.aiMode?.addEventListener('change', () => commit(
-    { aiMode: controls.aiMode.value },
-    `Режим автоматичної адаптації: ${controls.aiMode.options[controls.aiMode.selectedIndex]?.text || controls.aiMode.value}.`
-  ));
+  controls.aiMode?.addEventListener('change', () => {
+    autoPaused = false;
+    state.autoPaused = false;
+    commit(
+      { aiMode: controls.aiMode.value },
+      `Режим автоматичної адаптації: ${controls.aiMode.options[controls.aiMode.selectedIndex]?.text || controls.aiMode.value}.`
+    );
+  });
   controls.ttsRate?.addEventListener('input', () => commit({ ttsRate: Number(controls.ttsRate.value) }));
 
   document.addEventListener('tts:rate-change', (e) => {
     commit({ ttsRate: Number(e.detail?.rate) || 1 });
   });
 
-  undoAuto?.addEventListener('click', () => clearAutoChanges());
+  undoAuto?.addEventListener('click', () => {
+    if (autoPaused) resumeAutoChanges();
+    else clearAutoChanges();
+  });
 
   reset?.addEventListener('click', () => {
     if (!resetArmed){
@@ -628,6 +655,7 @@ export function initA11yPanel({ tts } = {}){
     state = sanitizeState(cloneDefaults());
     autoState = sanitizeAutoState(AUTO_DEFAULTS);
     autoLog = [];
+    autoPaused = false;
     save(state);
     applyAndSync();
     tts?.stop?.();
@@ -656,6 +684,7 @@ export function initA11yPanel({ tts } = {}){
     setAIState,
     replaceAIState,
     recordAutoDecision,
-    clearAutoChanges
+    clearAutoChanges,
+    isAutoPaused: () => autoPaused
   };
 }

@@ -13,6 +13,17 @@ function preferredScrollBehavior(){
   return reduceMotion ? 'auto' : 'smooth';
 }
 
+const auditTabindexRestores = new Map();
+
+function clearAuditHighlights(){
+  document.querySelectorAll('.a11y-outline-issue').forEach((el) => el.classList.remove('a11y-outline-issue'));
+  auditTabindexRestores.forEach((previousValue, el) => {
+    if (previousValue === null) el.removeAttribute('tabindex');
+    else el.setAttribute('tabindex', previousValue);
+  });
+  auditTabindexRestores.clear();
+}
+
 export function initAIExtras({ notify } = {}){
   initReadPosition({ notify });
   initA11yAuditUI({ notify });
@@ -82,8 +93,16 @@ function runMiniAudit(){
   const parseRgba = (str) => {
     const m = str.match(/rgba?\(([^)]+)\)/i);
     if (!m) return null;
-    const parts = m[1].split(',').map((x) => parseFloat(x.trim()));
-    return parts.length >= 3 ? [...parts.slice(0, 3), Number.isFinite(parts[3]) ? parts[3] : 1] : null;
+    const parts = m[1].trim().replace(/\s*\/\s*/, ' ').split(/[,\s]+/).filter(Boolean);
+    if (parts.length < 3) return null;
+    const channels = parts.slice(0, 3).map((part) => (
+      part.endsWith('%') ? (parseFloat(part) * 2.55) : parseFloat(part)
+    ));
+    const alphaPart = parts[3];
+    const alpha = alphaPart?.endsWith('%') ? parseFloat(alphaPart) / 100 : parseFloat(alphaPart);
+    return channels.every(Number.isFinite)
+      ? [...channels, Number.isFinite(alpha) ? alpha : 1]
+      : null;
   };
   const composite = (foreground, background) => {
     const alpha = foreground[3] + (background[3] * (1 - foreground[3]));
@@ -246,13 +265,17 @@ function renderAudit(issues, { notify } = {}){
   const box = document.getElementById('a11y-audit-results');
   if (!box) return;
 
-  document.querySelectorAll('.a11y-outline-issue').forEach((el) => el.classList.remove('a11y-outline-issue'));
+  clearAuditHighlights();
 
   box.hidden = false;
 
   if (!issues.length){
-    box.innerHTML = '<h3>Результат</h3><div>Критичних проблем не знайдено.</div>';
-    notify?.('AI: аудит, проблем не знайдено.', 3500);
+    box.innerHTML = `
+      <h3>Результат експрес-перевірки</h3>
+      <div>У підтримуваних правилах проблем не знайдено.</div>
+      <p class="hint">Це не повний WCAG-аудит. Контраст складних фонів, градієнтів і сторонніх компонентів потребує окремої перевірки.</p>
+    `;
+    notify?.('AI: експрес-аудит, у підтримуваних правилах проблем не знайдено.', 3500);
     return;
   }
 
@@ -271,6 +294,7 @@ function renderAudit(issues, { notify } = {}){
     <div class="audit-actions">
       <button type="button" class="btn-outline ui-control" data-audit-clear>Очистити підсвітку</button>
     </div>
+    <p class="hint">Це не повний WCAG-аудит. Контраст складних фонів, градієнтів і сторонніх компонентів потребує окремої перевірки.</p>
   `;
 
   box.onclick = (e) => {
@@ -278,7 +302,7 @@ function renderAudit(issues, { notify } = {}){
     const clear = e.target.closest('[data-audit-clear]');
 
     if (clear){
-      document.querySelectorAll('.a11y-outline-issue').forEach((el) => el.classList.remove('a11y-outline-issue'));
+      clearAuditHighlights();
       return;
     }
 
@@ -287,13 +311,14 @@ function renderAudit(issues, { notify } = {}){
       const issue = issues[idx];
       if (!issue?.el) return;
 
-      document.querySelectorAll('.a11y-outline-issue').forEach((el) => el.classList.remove('a11y-outline-issue'));
+      clearAuditHighlights();
       issue.el.classList.add('a11y-outline-issue');
 
       try{ issue.el.scrollIntoView({ block: 'center', behavior: preferredScrollBehavior() }); }catch{}
       try{
         if (issue.el && typeof issue.el.focus === 'function'){
           if (!issue.el.matches('a[href], button, input, select, textarea, [tabindex]')){
+            auditTabindexRestores.set(issue.el, issue.el.getAttribute('tabindex'));
             issue.el.setAttribute('tabindex', '-1');
           }
           issue.el.focus({ preventScroll: true });

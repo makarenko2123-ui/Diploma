@@ -311,6 +311,16 @@
   gap:12px;
 }
 
+body[data-zoom-assist="1"] > :where(.site-header, .ticker, #main),
+body[data-zoom-assist="2"] > :where(.site-header, .ticker, #main),
+body[data-zoom-assist="3"] > :where(.site-header, .ticker, #main),
+body[data-zoom-assist="4"] > :where(.site-header, .ticker, #main){
+  width:var(--vv-width);
+  max-width:var(--vv-width);
+  margin-left:var(--vv-left);
+  margin-right:0;
+}
+
 body[data-zoom-assist="1"] .container,
 body[data-zoom-assist="2"] .container,
 body[data-zoom-assist="3"] .container,
