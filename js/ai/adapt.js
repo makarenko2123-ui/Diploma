@@ -56,8 +56,8 @@ export function initAIAdapt({ a11y } = {}){
   const FEED_READING_EXIT_TIME_MS = 10000;
   const SHARP_SCROLL_DISTANCE = 200;
   const SHARP_SCROLL_SPEED = 1.55;
-  const SHARP_SCROLL_REDUCE_COUNT = 4;
-  const SHARP_SCROLL_DECLUTTER_COUNT = 6;
+  const SHARP_SCROLL_REDUCE_COUNT = 6;
+  const SHARP_SCROLL_DECLUTTER_COUNT = 8;
   const INTERACTIVE_SELECTOR = [
     'button',
     'a[href]',

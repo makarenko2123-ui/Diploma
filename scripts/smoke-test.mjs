@@ -1361,7 +1361,7 @@ try{
     assert.deepEqual(state, { guidedBehavior: 'auto', topBehavior: 'auto' });
   });
 
-  await run('sharp scrolling uses the raised four-action threshold', async () => {
+  await run('sharp scrolling uses the raised six-action threshold', async () => {
     await cdp.evaluate(() => {
       document.getElementById('a11y-toggle').click();
       document.getElementById('a11y-reset').click();
@@ -1371,7 +1371,7 @@ try{
     await delay(250);
     assert.equal(await cdp.evaluate(() => document.body.classList.contains('reduce-motion')), false);
 
-    for (let index = 0; index < 3; index += 1){
+    for (let index = 0; index < 5; index += 1){
       await cdp.evaluate((direction) => {
         window.dispatchEvent(new WheelEvent('wheel', { deltaY: direction * 240 }));
       }, index % 2 === 0 ? 1 : -1);
@@ -1380,7 +1380,7 @@ try{
     assert.equal(await cdp.evaluate(() => document.body.classList.contains('reduce-motion')), false);
 
     await cdp.evaluate(() => window.dispatchEvent(new WheelEvent('wheel', { deltaY: -240 })));
-    await waitFor(() => document.body.classList.contains('reduce-motion'), 'Fourth sharp scroll did not enable motion reduction.');
+    await waitFor(() => document.body.classList.contains('reduce-motion'), 'Sixth sharp scroll did not enable motion reduction.');
     await cdp.evaluate(() => document.dispatchEvent(new CustomEvent('a11y:reset-all')));
   });
 
